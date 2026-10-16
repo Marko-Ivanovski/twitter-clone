@@ -7,6 +7,7 @@ export interface AuthUser {
   displayName: string | null;
   bio: string | null;
   avatarUrl: string | null;
+  isPrivate: boolean;
   createdAt: string;
   updatedAt: string;
 }

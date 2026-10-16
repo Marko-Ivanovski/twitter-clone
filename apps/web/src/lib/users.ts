@@ -1,5 +1,7 @@
 import { apiFetch } from './api';
 
+export type FollowStatus = 'none' | 'requested' | 'following';
+
 export interface UserProfile {
   id: string;
   username: string;
@@ -11,7 +13,9 @@ export interface UserProfile {
   postsCount: number;
   followersCount: number;
   followingCount: number;
-  isFollowing: boolean;
+  isPrivate: boolean;
+  followStatus: FollowStatus;
+  canViewPosts: boolean;
 }
 
 export interface UserSearchResult {
@@ -19,6 +23,7 @@ export interface UserSearchResult {
   username: string;
   displayName: string | null;
   avatarUrl: string | null;
+  isPrivate: boolean;
 }
 
 export interface PostItem {
@@ -108,17 +113,28 @@ export async function getUserPosts(
   );
 }
 
-export async function followUser(username: string): Promise<{ isFollowing: boolean }> {
-  return apiFetch<{ isFollowing: boolean }>(`/api/users/${encodeURIComponent(username)}/follow`, {
-    method: 'POST',
-  });
+export async function followUser(username: string): Promise<{ status: 'following' | 'requested' }> {
+  return apiFetch<{ status: 'following' | 'requested' }>(
+    `/api/users/${encodeURIComponent(username)}/follow`,
+    { method: 'POST' },
+  );
 }
 
-export async function unfollowUser(username: string): Promise<{ isFollowing: boolean }> {
-  return apiFetch<{ isFollowing: boolean }>(`/api/users/${encodeURIComponent(username)}/follow`, {
+export async function unfollowUser(username: string): Promise<{ status: 'none' }> {
+  return apiFetch<{ status: 'none' }>(`/api/users/${encodeURIComponent(username)}/follow`, {
     method: 'DELETE',
   });
 }
+
+export const acceptFollowRequest = (username: string) =>
+  apiFetch<void>(`/api/users/me/follow-requests/${encodeURIComponent(username)}/accept`, {
+    method: 'POST',
+  });
+
+export const declineFollowRequest = (username: string) =>
+  apiFetch<void>(`/api/users/me/follow-requests/${encodeURIComponent(username)}/decline`, {
+    method: 'POST',
+  });
 
 export interface UpdateProfileInput {
   email?: string;
@@ -127,6 +143,7 @@ export interface UpdateProfileInput {
   displayName?: string;
   bio?: string;
   avatarUrl?: string | null;
+  isPrivate?: boolean;
 }
 
 export async function updateProfile(data: UpdateProfileInput): Promise<UserProfile> {

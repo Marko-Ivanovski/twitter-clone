@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useState, useRef, useEffect } from 'react';
 import { useTheme } from '@/context/ThemeContext';
-import { LogOut, Moon, Search, Settings, Sun, User } from 'lucide-react';
+import { Lock, LogOut, Moon, Search, Settings, Sun, User } from 'lucide-react';
 import { searchUsers, UserSearchResult } from '@/lib/users';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { buildAvatarUrl, setAvatarFallback } from '@/utils/avatar';
@@ -126,6 +126,9 @@ export function Navigation() {
                         <div className="min-w-0">
                           <div className="truncate font-medium text-gray-900 dark:text-slate-100">
                             {result.displayName || result.username}
+                            {result.isPrivate && (
+                              <Lock size={12} className="ml-1 inline text-gray-400" aria-label="Private account" />
+                            )}
                           </div>
                           <div className="truncate text-xs text-gray-500 dark:text-slate-400">@{result.username}</div>
                         </div>

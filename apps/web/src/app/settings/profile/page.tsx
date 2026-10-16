@@ -19,6 +19,7 @@ export default function EditProfilePage() {
   // Profile Form State
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [bio, setBio] = useState(user?.bio || '');
+  const [isPrivate, setIsPrivate] = useState(user?.isPrivate ?? false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(user?.avatarUrl || null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
@@ -29,6 +30,7 @@ export default function EditProfilePage() {
     if (user) {
       setDisplayName(user.displayName || '');
       setBio(user.bio || '');
+      setIsPrivate(user.isPrivate);
       setPreviewUrl(user.avatarUrl ? encodeURI(user.avatarUrl) : null);
     }
   }, [user]);
@@ -115,6 +117,7 @@ export default function EditProfilePage() {
       await updateProfile({
         displayName,
         bio,
+        isPrivate,
         ...(avatarUrl ? { avatarUrl } : {}),
       });
       
@@ -308,6 +311,24 @@ export default function EditProfilePage() {
                   onChange={(e) => setBio(e.target.value)}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-gray-900 sm:text-sm p-2 border dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-400"
                   placeholder="Tell us about yourself"
+                />
+              </div>
+
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 p-4 dark:border-slate-700">
+                <div>
+                  <label htmlFor="isPrivate" className="block text-sm font-medium text-gray-900 dark:text-slate-100">
+                    Private account
+                  </label>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+                    Only people you approve can see your posts. Turning this off accepts every pending follow request.
+                  </p>
+                </div>
+                <input
+                  id="isPrivate"
+                  type="checkbox"
+                  checked={isPrivate}
+                  onChange={(e) => setIsPrivate(e.target.checked)}
+                  className="mt-1 h-5 w-5 shrink-0 accent-gray-900 dark:accent-slate-100"
                 />
               </div>
 
