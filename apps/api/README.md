@@ -43,6 +43,12 @@ Uploads:
 - POST `/api/uploads?folder=avatars|tweets` - Upload an image (multipart form-data `file`).
 - Files are served from `/api/uploads/<folder>/<filename>`. Only JPG, PNG, WEBP, and GIF up to 5MB are accepted, detected from the file contents.
 
+Notifications (all require auth):
+- GET `/api/notifications?limit=20&offset=0` - Paginated notifications, newest first.
+- GET `/api/notifications/unread-count` - `{ count }` of unread notifications.
+- POST `/api/notifications/read` - Mark all notifications as read.
+- GET `/api/notifications/stream` - Server-Sent Events. Emits `notification` events as they happen and a `ping` every 25 seconds.
+
 Request notes:
 - `POST /api/posts` accepts `{ content?, imageUrl?, visibility? }` (content or imageUrl required).
 - `PATCH /api/posts/:postId` accepts partial updates for the same fields.
@@ -55,5 +61,6 @@ Request notes:
 - `likes`: (userId, postId) unique pair
 - `follows`: (followerId, followingId) unique pair
 - `comments`: content, parentCommentId for replies
+- `notifications`: recipientId, actorId, type (LIKE/COMMENT/REPLY/RETWEET/FOLLOW), postId, commentId, readAt
 
 Retweets are stored as posts with `kind = RETWEET` and `originalPostId` pointing at the original post.
