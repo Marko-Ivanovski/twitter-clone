@@ -19,6 +19,8 @@ import {
   visiblePostsWhere,
 } from './post-visibility';
 
+const MAX_REPLIES_PER_COMMENT = 50;
+
 @Injectable()
 export class PostsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -287,8 +289,10 @@ export class PostsService {
               avatarUrl: true,
             },
           },
+          // Replies are uncapped, so each comment's thread is bounded per response.
           replies: {
             orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            take: MAX_REPLIES_PER_COMMENT,
             include: {
               author: {
                 select: {
@@ -299,12 +303,17 @@ export class PostsService {
               },
             },
           },
+          _count: { select: { replies: true } },
         },
       }),
     ]);
 
     const hasMore = comments.length > limit;
-    const items = hasMore ? comments.slice(0, limit) : comments;
+    const page = hasMore ? comments.slice(0, limit) : comments;
+    const items = page.map(({ _count, ...comment }) => ({
+      ...comment,
+      replyCount: _count.replies,
+    }));
 
     return {
       items,

@@ -40,7 +40,7 @@ const toCommentPreview = (comment: CommentItem): CommentPreview => ({
   content: comment.content,
   createdAt: comment.createdAt,
   author: comment.author,
-  replyCount: comment.replies?.length ?? 0,
+  replyCount: comment.replyCount ?? comment.replies?.length ?? 0,
   replies: comment.replies ?? [],
 });
 
@@ -904,7 +904,7 @@ export function PostList({ username, postId, type = 'user' }: PostListProps) {
                     <div className="space-y-3">
                       {comments.map((comment) => {
                         const replies = comment.replies ?? [];
-                        const hiddenReplyCount = isSingle ? 0 : comment.replyCount - replies.length;
+                        const hiddenReplyCount = comment.replyCount - replies.length;
                         const replyError = replyErrors[comment.id];
                         const isReplying = replyPending[comment.id];
                         const replyDraft = replyDrafts[comment.id] ?? '';
@@ -964,7 +964,12 @@ export function PostList({ username, postId, type = 'user' }: PostListProps) {
                               </div>
                             )}
 
-                            {hiddenReplyCount > 0 && (
+                            {hiddenReplyCount > 0 && isSingle && (
+                              <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">
+                                {hiddenReplyCount} older repl{hiddenReplyCount === 1 ? 'y is' : 'ies are'} not shown
+                              </p>
+                            )}
+                            {hiddenReplyCount > 0 && !isSingle && (
                               <Link
                                 href={`/post/${targetId}`}
                                 className="mt-2 block text-xs font-semibold text-gray-500 hover:underline dark:text-slate-400"

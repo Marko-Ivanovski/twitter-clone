@@ -13,6 +13,7 @@ export interface CommentItem {
     avatarUrl: string | null;
   };
   replies?: CommentItem[];
+  replyCount?: number;
 }
 
 export async function addComment(
