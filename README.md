@@ -17,6 +17,7 @@ A simplified Twitter-style social feed built with Next.js, NestJS, and Postgres.
 - Comments and replies
 - Post visibility (public/private)
 - Follow and unfollow users
+- Real-time notifications inbox (likes, comments, replies, retweets, follows) over Server-Sent Events
 - User search
 - Light/dark theme toggle
 
@@ -68,7 +69,6 @@ In the `/media` folder in the root repo is a simple video showcasing all of the 
 
 ## Potential Future Improvements
 
-- Notification Inbox System
 - Private/Public Profiles (something like Instagram)
 - Messaging 
 - Uploading videos on tweets
