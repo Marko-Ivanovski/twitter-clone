@@ -21,6 +21,8 @@ import type { Response } from 'express';
 import { UsersService } from './users.service';
 import { AuthService } from '../auth/auth.service';
 import { setAuthCookies } from '../auth/auth.cookies';
+import { CREDENTIAL_THROTTLE } from '../auth/auth.constants';
+import { Throttle } from '@nestjs/throttler';
 import type { AuthRequest } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
@@ -127,6 +129,7 @@ export class UsersController {
   }
 
   @Patch('me')
+  @Throttle(CREDENTIAL_THROTTLE)
   @UseGuards(JwtAuthGuard)
   async patchUser(
     @Body() dto: UpdateUserDto,

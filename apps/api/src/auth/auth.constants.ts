@@ -18,3 +18,6 @@ export const getRefreshTokenSecret = (): string => {
   }
   return secret;
 };
+
+// Applied to every endpoint that verifies a password.
+export const CREDENTIAL_THROTTLE = { default: { limit: 10, ttl: 60_000 } };

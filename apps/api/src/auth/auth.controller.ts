@@ -18,8 +18,7 @@ import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { AuthRequest } from './auth.types';
 import { clearAuthCookies, setAuthCookies } from './auth.cookies';
-
-const CREDENTIAL_THROTTLE = { default: { limit: 10, ttl: 60_000 } };
+import { CREDENTIAL_THROTTLE } from './auth.constants';
 
 @Controller('auth')
 export class AuthController {
