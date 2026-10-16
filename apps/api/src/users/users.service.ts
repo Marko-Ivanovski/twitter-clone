@@ -5,15 +5,15 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { NotificationType, Prisma, User } from '@prisma/client';
+import { Prisma, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { isRecordNotFound, isUniqueViolation } from '../prisma/prisma-errors';
+import { isUniqueViolation } from '../prisma/prisma-errors';
 import { mapPostsForViewer, postInclude } from '../posts/post.mapper';
 import { buildVisiblePostsWhere } from '../posts/post-visibility';
 import { isOwnUploadUrl } from '../uploads/upload-url';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { FollowsService } from './follows.service';
 
 interface CreateUserInput {
   email: string;
@@ -31,7 +31,7 @@ interface UpdateUserResult {
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notifications: NotificationsService,
+    private readonly follows: FollowsService,
   ) {}
 
   findByEmail(email: string): Promise<User | null> {
@@ -227,69 +227,6 @@ export class UsersService {
       offset,
       hasMore,
     };
-  }
-
-  async followUser(followerId: string, followingUsername: string) {
-    const targetUser = await this.findByUsername(followingUsername);
-
-    if (!targetUser) {
-      return { notFound: true };
-    }
-
-    if (targetUser.id === followerId) {
-      return { selfFollow: true };
-    }
-
-    try {
-      await this.prisma.follow.create({
-        data: {
-          followerId,
-          followingId: targetUser.id,
-        },
-      });
-      await this.notifications.notify({
-        type: NotificationType.FOLLOW,
-        actorId: followerId,
-        recipientId: targetUser.id,
-      });
-      return { success: true };
-    } catch (error) {
-      if (isUniqueViolation(error)) {
-        return { alreadyFollowing: true };
-      }
-      throw error;
-    }
-  }
-
-  async unfollowUser(followerId: string, followingUsername: string) {
-    const targetUser = await this.findByUsername(followingUsername);
-
-    if (!targetUser) {
-      return { notFound: true };
-    }
-
-    try {
-      await this.prisma.follow.delete({
-        where: {
-          followerId_followingId: {
-            followerId,
-            followingId: targetUser.id,
-          },
-        },
-      });
-    } catch (error) {
-      if (!isRecordNotFound(error)) {
-        throw error;
-      }
-    }
-
-    await this.notifications.retract({
-      type: NotificationType.FOLLOW,
-      actorId: followerId,
-      recipientId: targetUser.id,
-    });
-
-    return { success: true };
   }
 
   private async assertCurrentPassword(user: User, currentPassword?: string) {

@@ -11,7 +11,8 @@ import {
   NotFoundException,
   ParseIntPipe,
   DefaultValuePipe,
-  ConflictException,
+  HttpCode,
+  HttpStatus,
   Patch,
   Body,
   Inject,
@@ -19,6 +20,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { UsersService } from './users.service';
+import { FollowsService } from './follows.service';
 import { AuthService } from '../auth/auth.service';
 import { setAuthCookies } from '../auth/auth.cookies';
 import { CREDENTIAL_THROTTLE } from '../auth/auth.constants';
@@ -33,6 +35,7 @@ import { toUserDto } from './dto/user.dto';
 export class UsersController {
   constructor(
     private readonly usersService: UsersService,
+    private readonly followsService: FollowsService,
     @Inject(forwardRef(() => AuthService))
     private readonly authService: AuthService,
   ) {}
@@ -91,41 +94,34 @@ export class UsersController {
 
   @Post(':username/follow')
   @UseGuards(JwtAuthGuard)
-  async followUser(
-    @Param('username') username: string,
-    @Req() req: AuthRequest,
-  ) {
-    const result = await this.usersService.followUser(req.user!.sub, username);
-
-    if (result.notFound) {
-      throw new NotFoundException('User not found');
-    }
-    if (result.selfFollow) {
-      throw new ConflictException('Cannot follow yourself');
-    }
-    if (result.alreadyFollowing) {
-      throw new ConflictException('Already following');
-    }
-
-    return { isFollowing: true };
+  followUser(@Param('username') username: string, @Req() req: AuthRequest) {
+    return this.followsService.follow(req.user!.sub, username);
   }
 
   @Delete(':username/follow')
   @UseGuards(JwtAuthGuard)
-  async unfollowUser(
+  unfollowUser(@Param('username') username: string, @Req() req: AuthRequest) {
+    return this.followsService.unfollow(req.user!.sub, username);
+  }
+
+  @Post('me/follow-requests/:username/accept')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async acceptFollowRequest(
     @Param('username') username: string,
     @Req() req: AuthRequest,
   ) {
-    const result = await this.usersService.unfollowUser(
-      req.user!.sub,
-      username,
-    );
+    await this.followsService.acceptRequest(req.user!.sub, username);
+  }
 
-    if (result.notFound) {
-      throw new NotFoundException('User not found');
-    }
-
-    return { isFollowing: false };
+  @Post('me/follow-requests/:username/decline')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async declineFollowRequest(
+    @Param('username') username: string,
+    @Req() req: AuthRequest,
+  ) {
+    await this.followsService.declineRequest(req.user!.sub, username);
   }
 
   @Patch('me')
