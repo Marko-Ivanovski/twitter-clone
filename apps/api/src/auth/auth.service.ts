@@ -6,9 +6,10 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { User } from '@prisma/client';
+import { isUniqueViolation } from '../prisma/prisma-errors';
 import { UsersService } from '../users/users.service';
 import { UserDto, toUserDto } from '../users/dto/user.dto';
-import { JwtPayload } from './auth.types';
+import { JwtPayload, TokenPair } from './auth.types';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import {
@@ -18,15 +19,14 @@ import {
   getRefreshTokenSecret,
 } from './auth.constants';
 
-interface TokenPair {
-  accessToken: string;
-  refreshToken: string;
-}
-
 interface AuthResult {
   user: UserDto;
   tokens: TokenPair;
 }
+
+// Compared against when no user matches, so a missing account takes as long
+// to reject as a wrong password and usernames can't be probed by timing.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('timing-equalizer', 10);
 
 @Injectable()
 export class AuthService {
@@ -50,15 +50,23 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
-    const user = await this.usersService.createUser({
-      email,
-      username,
-      passwordHash,
-      displayName: dto.displayName?.trim() || null,
-    });
+    let user: User;
+    try {
+      user = await this.usersService.createUser({
+        email,
+        username,
+        passwordHash,
+        displayName: dto.displayName?.trim() || null,
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException('Email or username already in use');
+      }
+      throw error;
+    }
 
-    const tokens = await this.generateTokens(user.id);
-    return { user: this.sanitizeUser(user), tokens };
+    const tokens = await this.issueTokens(user);
+    return { user: toUserDto(user), tokens };
   }
 
   async login(dto: LoginDto): Promise<AuthResult> {
@@ -67,20 +75,16 @@ export class AuthService {
       (await this.usersService.findByEmail(identifier)) ??
       (await this.usersService.findByUsername(identifier));
 
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
     const passwordMatches = await bcrypt.compare(
       dto.password,
-      user.passwordHash,
+      user?.passwordHash ?? DUMMY_PASSWORD_HASH,
     );
-    if (!passwordMatches) {
+    if (!user || !passwordMatches) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const tokens = await this.generateTokens(user.id);
-    return { user: this.sanitizeUser(user), tokens };
+    const tokens = await this.issueTokens(user);
+    return { user: toUserDto(user), tokens };
   }
 
   async getCurrentUser(userId: string): Promise<UserDto> {
@@ -89,51 +93,45 @@ export class AuthService {
       throw new UnauthorizedException('Unauthorized');
     }
 
-    return this.sanitizeUser(user);
+    return toUserDto(user);
   }
 
-  async refresh(refreshToken?: string | null): Promise<AuthResult> {
+  async refresh(refreshToken?: string): Promise<AuthResult> {
     if (!refreshToken) {
       throw new UnauthorizedException('Unauthorized');
     }
 
+    let payload: JwtPayload;
     try {
-      const payload = await this.jwtService.verifyAsync<JwtPayload>(
-        refreshToken,
-        {
-          secret: getRefreshTokenSecret(),
-        },
-      );
-
-      const user = await this.usersService.findById(payload.sub);
-      if (!user) {
-        throw new UnauthorizedException('Unauthorized');
-      }
-
-      const tokens = await this.generateTokens(user.id);
-      return { user: this.sanitizeUser(user), tokens };
+      payload = await this.jwtService.verifyAsync<JwtPayload>(refreshToken, {
+        secret: getRefreshTokenSecret(),
+      });
     } catch {
       throw new UnauthorizedException('Unauthorized');
     }
+
+    const user = await this.usersService.findById(payload.sub);
+    if (!user || payload.ver !== user.tokenVersion) {
+      throw new UnauthorizedException('Unauthorized');
+    }
+
+    const tokens = await this.issueTokens(user);
+    return { user: toUserDto(user), tokens };
   }
 
-  private sanitizeUser(user: User): UserDto {
-    return toUserDto(user);
-  }
-
-  private async generateTokens(userId: string): Promise<TokenPair> {
+  async issueTokens(
+    user: Pick<User, 'id' | 'tokenVersion'>,
+  ): Promise<TokenPair> {
+    const payload: JwtPayload = { sub: user.id, ver: user.tokenVersion };
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync(
-        { sub: userId },
-        { secret: getAccessTokenSecret(), expiresIn: ACCESS_TOKEN_EXPIRES_IN },
-      ),
-      this.jwtService.signAsync(
-        { sub: userId },
-        {
-          secret: getRefreshTokenSecret(),
-          expiresIn: REFRESH_TOKEN_EXPIRES_IN,
-        },
-      ),
+      this.jwtService.signAsync(payload, {
+        secret: getAccessTokenSecret(),
+        expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+      }),
+      this.jwtService.signAsync(payload, {
+        secret: getRefreshTokenSecret(),
+        expiresIn: REFRESH_TOKEN_EXPIRES_IN,
+      }),
     ]);
 
     return { accessToken, refreshToken };

@@ -7,3 +7,5 @@ export const checkPasswordStrength = (password: string): string[] => {
   if (!/(?=.*\W+)/.test(password)) errors.push("At least one special character");
   return errors;
 };
+
+export const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,30}$/;

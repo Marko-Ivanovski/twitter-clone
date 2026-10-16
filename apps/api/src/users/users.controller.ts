@@ -7,22 +7,33 @@ import {
   Query,
   UseGuards,
   Req,
+  Res,
   NotFoundException,
   ParseIntPipe,
   DefaultValuePipe,
   ConflictException,
   Patch,
   Body,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { UsersService } from './users.service';
+import { AuthService } from '../auth/auth.service';
+import { setAuthCookies } from '../auth/auth.cookies';
+import type { AuthRequest } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { UpdateUserDto } from './dto/update-user.dto';
-import type { Request } from 'express';
+import { toUserDto } from './dto/user.dto';
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    @Inject(forwardRef(() => AuthService))
+    private readonly authService: AuthService,
+  ) {}
 
   @Get()
   async searchUsers(
@@ -44,17 +55,9 @@ export class UsersController {
   @UseGuards(OptionalJwtAuthGuard)
   async getUserProfile(
     @Param('username') username: string,
-    @Req() req: Request,
+    @Req() req: AuthRequest,
   ) {
-    // Extract viewerId from cookie if available (handled by guard usually, but this is public)
-    // We can manually parse token or use a loose guard.
-    // For now, let's assume we might have user on req if middleware ran, or we need to extract it.
-    // Given scope "never trust client userId", we should rely on validated auth.
-    // Helper/AUTH.md check might be useful but "Use auth cookies and derive viewerId" implies we should
-    // be able to get it.
-    const userId = (req as any).user?.sub;
-
-    const profile = await this.usersService.getProfile(username, userId);
+    const profile = await this.usersService.getProfile(username, req.user?.sub);
     if (!profile) {
       throw new NotFoundException('User not found');
     }
@@ -67,17 +70,16 @@ export class UsersController {
     @Param('username') username: string,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
-    @Req() req: Request,
+    @Req() req: AuthRequest,
   ) {
     if (limit < 1 || limit > 100) limit = 20;
     if (offset < 0) offset = 0;
 
-    const userId = (req as any).user?.sub;
     const result = await this.usersService.getUserPosts(
       username,
       limit,
       offset,
-      userId,
+      req.user?.sub,
     );
     if (!result) {
       throw new NotFoundException('User not found');
@@ -87,11 +89,11 @@ export class UsersController {
 
   @Post(':username/follow')
   @UseGuards(JwtAuthGuard)
-  async followUser(@Param('username') username: string, @Req() req: Request) {
-    // AuthGuard ensures req.user is populated
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const followerId = (req as any).user.sub;
-    const result = await this.usersService.followUser(followerId, username);
+  async followUser(
+    @Param('username') username: string,
+    @Req() req: AuthRequest,
+  ) {
+    const result = await this.usersService.followUser(req.user!.sub, username);
 
     if (result.notFound) {
       throw new NotFoundException('User not found');
@@ -100,8 +102,6 @@ export class UsersController {
       throw new ConflictException('Cannot follow yourself');
     }
     if (result.alreadyFollowing) {
-      // Requirement says: "200 with {isFollowing} or 409".
-      // Let's return 409 as requested by prompt "409 on conflict".
       throw new ConflictException('Already following');
     }
 
@@ -110,9 +110,14 @@ export class UsersController {
 
   @Delete(':username/follow')
   @UseGuards(JwtAuthGuard)
-  async unfollowUser(@Param('username') username: string, @Req() req: Request) {
-    const followerId = (req as any).user.sub;
-    const result = await this.usersService.unfollowUser(followerId, username);
+  async unfollowUser(
+    @Param('username') username: string,
+    @Req() req: AuthRequest,
+  ) {
+    const result = await this.usersService.unfollowUser(
+      req.user!.sub,
+      username,
+    );
 
     if (result.notFound) {
       throw new NotFoundException('User not found');
@@ -123,20 +128,22 @@ export class UsersController {
 
   @Patch('me')
   @UseGuards(JwtAuthGuard)
-  async patchUser(@Body() dto: UpdateUserDto, @Req() req: Request) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const userId = (req as any).user.sub;
+  async patchUser(
+    @Body() dto: UpdateUserDto,
+    @Req() req: AuthRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { user, passwordChanged } = await this.usersService.updateUser(
+      req.user!.sub,
+      dto,
+    );
 
-    try {
-      const user = await this.usersService.updateUser(userId, dto);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { passwordHash, ...result } = user;
-      return result;
-    } catch (error: any) {
-      if (error.message === 'Email already in use' || error.message === 'Username already in use') {
-        throw new ConflictException(error.message);
-      }
-      throw error;
+    // A password change revokes every existing session, so the current one
+    // gets fresh tokens to stay signed in.
+    if (passwordChanged) {
+      setAuthCookies(res, await this.authService.issueTokens(user));
     }
+
+    return toUserDto(user);
   }
 }

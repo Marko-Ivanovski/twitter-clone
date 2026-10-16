@@ -1,8 +1,18 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { Injectable } from '@nestjs/common';
-import { PostVisibility } from '@prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { Prisma, User } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { isRecordNotFound, isUniqueViolation } from '../prisma/prisma-errors';
 import { mapPostsForViewer, postInclude } from '../posts/post.mapper';
+import { buildVisiblePostsWhere } from '../posts/post-visibility';
+import { isOwnUploadUrl } from '../uploads/upload-url';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 interface CreateUserInput {
   email: string;
@@ -11,46 +21,29 @@ interface CreateUserInput {
   displayName?: string | null;
 }
 
-type UserRecord = {
-  id: string;
-  email: string;
-  username: string;
-  passwordHash: string;
-  displayName: string | null;
-  bio: string | null;
-  avatarUrl: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  _count?: {
-    followers: number;
-    following: number;
-    posts: number;
-  };
-};
+interface UpdateUserResult {
+  user: User;
+  passwordChanged: boolean;
+}
 
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findByEmail(email: string): Promise<UserRecord | null> {
-    const user = await this.prisma.user.findUnique({
+  findByEmail(email: string): Promise<User | null> {
+    return this.prisma.user.findUnique({
       where: { email: email.toLowerCase() },
     });
-
-    return user as UserRecord | null;
   }
 
-  async findByUsername(username: string): Promise<UserRecord | null> {
-    const user = await this.prisma.user.findUnique({
+  findByUsername(username: string): Promise<User | null> {
+    return this.prisma.user.findUnique({
       where: { username: username.toLowerCase() },
     });
-
-    return user as UserRecord | null;
   }
 
-  async findById(id: string): Promise<UserRecord | null> {
-    const user = await this.prisma.user.findUnique({ where: { id } });
-    return user as UserRecord | null;
+  findById(id: string): Promise<User | null> {
+    return this.prisma.user.findUnique({ where: { id } });
   }
 
   async searchUsers(query: string, limit: number) {
@@ -81,8 +74,8 @@ export class UsersService {
     });
   }
 
-  async createUser(input: CreateUserInput): Promise<UserRecord> {
-    const user = await this.prisma.user.create({
+  createUser(input: CreateUserInput): Promise<User> {
+    return this.prisma.user.create({
       data: {
         email: input.email.toLowerCase(),
         username: input.username.toLowerCase(),
@@ -90,46 +83,48 @@ export class UsersService {
         displayName: input.displayName,
       },
     });
-
-    return user as UserRecord;
   }
 
-  async updateUser(id: string, data: Partial<UserRecord> & { password?: string }) {
+  async updateUser(id: string, dto: UpdateUserDto): Promise<UpdateUserResult> {
     const currentUser = await this.findById(id);
-    if (!currentUser) throw new Error('User not found');
+    if (!currentUser) {
+      throw new UnauthorizedException('Unauthorized');
+    }
 
-    if (data.email && data.email.toLowerCase() !== currentUser.email.toLowerCase()) {
-      const existing = await this.findByEmail(data.email);
-      if (existing) {
-        throw new Error('Email already in use');
+    const email = dto.email?.trim().toLowerCase();
+    const emailChanged = email !== undefined && email !== currentUser.email;
+    const passwordChanged = Boolean(dto.password);
+
+    if (emailChanged || passwordChanged) {
+      await this.assertCurrentPassword(currentUser, dto.currentPassword);
+    }
+
+    if (dto.avatarUrl && !isOwnUploadUrl(dto.avatarUrl)) {
+      throw new BadRequestException('Invalid avatar URL');
+    }
+
+    const data: Prisma.UserUpdateInput = {
+      displayName: dto.displayName,
+      bio: dto.bio,
+      avatarUrl: dto.avatarUrl,
+    };
+    if (emailChanged) {
+      data.email = email;
+    }
+    if (dto.password) {
+      data.passwordHash = await bcrypt.hash(dto.password, 10);
+      data.tokenVersion = { increment: 1 };
+    }
+
+    try {
+      const user = await this.prisma.user.update({ where: { id }, data });
+      return { user, passwordChanged };
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException('Email already in use');
       }
+      throw error;
     }
-
-    if (data.username && data.username.toLowerCase() !== currentUser.username.toLowerCase()) {
-      const existing = await this.findByUsername(data.username);
-      if (existing) {
-        throw new Error('Username already in use');
-      }
-    }
-
-    let passwordHash = undefined;
-    if (data.password) {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const bcrypt = require('bcrypt');
-      passwordHash = await bcrypt.hash(data.password, 10);
-    }
-
-    const { password, ...updateData } = data; // remove raw password
-
-    const user = await this.prisma.user.update({
-      where: { id },
-      data: {
-        ...updateData,
-        ...(passwordHash ? { passwordHash } : {}),
-      },
-    });
-
-    return user as UserRecord;
   }
 
   async getProfile(username: string, viewerId?: string) {
@@ -157,7 +152,6 @@ export class UsersService {
     }
 
     let isFollowing = false;
-    let canViewPrivate = false;
     if (viewerId && viewerId !== user.id) {
       const follow = await this.prisma.follow.findUnique({
         where: {
@@ -168,16 +162,11 @@ export class UsersService {
         },
       });
       isFollowing = !!follow;
-      canViewPrivate = isFollowing;
-    } else if (viewerId === user.id) {
-      canViewPrivate = true;
     }
 
+    const visibleWhere = await buildVisiblePostsWhere(this.prisma, viewerId);
     const postsCount = await this.prisma.post.count({
-      where: {
-        authorId: user.id,
-        ...(canViewPrivate ? {} : { visibility: PostVisibility.PUBLIC }),
-      },
+      where: { AND: [{ authorId: user.id }, visibleWhere] },
     });
 
     return {
@@ -206,24 +195,21 @@ export class UsersService {
       return null;
     }
 
-    const canViewPrivate =
-      viewerId ? await this.canViewPrivatePosts(viewerId, user.id) : false;
-
-    const whereClause = {
-      authorId: user.id,
-      ...(canViewPrivate ? {} : { visibility: PostVisibility.PUBLIC }),
+    const visibleWhere = await buildVisiblePostsWhere(this.prisma, viewerId);
+    const whereClause: Prisma.PostWhereInput = {
+      AND: [{ authorId: user.id }, visibleWhere],
     };
 
-    const total = await this.prisma.post.count({ where: whereClause });
-
-    // Stable ordering by createdAt desc, then id desc
-    const posts = await this.prisma.post.findMany({
-      where: whereClause,
-      take: limit + 1, // Fetch one extra to check hasMore
-      skip: offset,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      include: postInclude,
-    });
+    const [total, posts] = await Promise.all([
+      this.prisma.post.count({ where: whereClause }),
+      this.prisma.post.findMany({
+        where: whereClause,
+        take: limit + 1,
+        skip: offset,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        include: postInclude,
+      }),
+    ]);
 
     const hasMore = posts.length > limit;
     const items = hasMore ? posts.slice(0, limit) : posts;
@@ -239,27 +225,8 @@ export class UsersService {
     };
   }
 
-  private async canViewPrivatePosts(viewerId: string, userId: string) {
-    if (viewerId === userId) {
-      return true;
-    }
-
-    const follow = await this.prisma.follow.findUnique({
-      where: {
-        followerId_followingId: {
-          followerId: viewerId,
-          followingId: userId,
-        },
-      },
-    });
-
-    return Boolean(follow);
-  }
-
   async followUser(followerId: string, followingUsername: string) {
-    const targetUser = await this.prisma.user.findUnique({
-      where: { username: followingUsername.toLowerCase() },
-    });
+    const targetUser = await this.findByUsername(followingUsername);
 
     if (!targetUser) {
       return { notFound: true };
@@ -277,9 +244,8 @@ export class UsersService {
         },
       });
       return { success: true };
-    } catch (error: any) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      if (error.code === 'P2002') {
+    } catch (error) {
+      if (isUniqueViolation(error)) {
         return { alreadyFollowing: true };
       }
       throw error;
@@ -287,9 +253,7 @@ export class UsersService {
   }
 
   async unfollowUser(followerId: string, followingUsername: string) {
-    const targetUser = await this.prisma.user.findUnique({
-      where: { username: followingUsername.toLowerCase() },
-    });
+    const targetUser = await this.findByUsername(followingUsername);
 
     if (!targetUser) {
       return { notFound: true };
@@ -304,15 +268,22 @@ export class UsersService {
           },
         },
       });
-    } catch (error: any) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      if (error.code === 'P2025') {
-        // Record not found, ignore
-        return { success: true };
+    } catch (error) {
+      if (!isRecordNotFound(error)) {
+        throw error;
       }
-      throw error;
     }
 
     return { success: true };
+  }
+
+  private async assertCurrentPassword(user: User, currentPassword?: string) {
+    const matches = currentPassword
+      ? await bcrypt.compare(currentPassword, user.passwordHash)
+      : false;
+
+    if (!matches) {
+      throw new ForbiddenException('Current password is incorrect');
+    }
   }
 }

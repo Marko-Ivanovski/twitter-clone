@@ -1,92 +1,58 @@
 import {
+  BadRequestException,
   Controller,
-  FileTypeValidator,
   Post,
   Query,
   UploadedFile,
-  ParseFilePipe,
-  MaxFileSizeValidator,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import type { Request } from 'express';
+import { Throttle } from '@nestjs/throttler';
 import { randomUUID } from 'crypto';
-import { diskStorage } from 'multer';
+import { promises as fs } from 'fs';
+import { memoryStorage } from 'multer';
 import path from 'path';
-import * as fs from 'fs';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { detectImageExtension } from './image-signature';
+import { getUploadsBaseUrl, isUploadFolder } from './upload-url';
 
-const MIME_EXTENSION_MAP: Record<string, string> = {
-  'image/jpeg': '.jpg',
-  'image/png': '.png',
-  'image/webp': '.webp',
-  'image/gif': '.gif',
-};
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const UPLOAD_ROOT = path.join(process.cwd(), 'uploads');
 
 @Controller('uploads')
 export class UploadsController {
   @Post()
   @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (
-          req: Request,
-          file: Express.Multer.File,
-          callback: (error: Error | null, destination: string) => void,
-        ) => {
-          const allowedFolders = ['avatars', 'posts', 'tweets'];
-          const queryFolder = req.query.folder as string;
-          const folder = allowedFolders.includes(queryFolder)
-            ? queryFolder
-            : 'misc';
-          const uploadPath = `./uploads/${folder}`;
-
-          if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-          }
-
-          callback(null, uploadPath);
-        },
-        filename: (
-          req: Request,
-          file: Express.Multer.File,
-          callback: (error: Error | null, filename: string) => void,
-        ) => {
-          const extension =
-            MIME_EXTENSION_MAP[file.mimetype] ??
-            path.extname((file as any).originalname);
-          const safeExtension = extension ? extension.toLowerCase() : '';
-          const fileName = `${randomUUID()}${safeExtension}`;
-          callback(null, fileName);
-        },
-      }),
+      storage: memoryStorage(),
+      limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
     }),
   )
-  uploadFile(
-    @UploadedFile(
-      new ParseFilePipe({
-        validators: [
-          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }), // 5MB
-          new FileTypeValidator({
-            fileType: /image\/(jpeg|jpg|png|webp|gif)$/i,
-            fallbackToMimetype: true,
-          }),
-        ],
-      }),
-    )
-    file: Express.Multer.File,
+  async uploadFile(
+    @UploadedFile() file: Express.Multer.File | undefined,
     @Query('folder') folder?: string,
   ) {
-    const allowedFolders = ['avatars', 'posts', 'tweets'];
-    const targetFolder =
-      folder && allowedFolders.includes(folder) ? folder : 'misc';
-    // Use the same base URL that the frontend uses to access the API
-    const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:3001';
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
 
-    return {
-      url: `${baseUrl}/api/uploads/${targetFolder}/${(file as any).filename}`,
-    };
+    const extension = detectImageExtension(file.buffer);
+    if (!extension) {
+      throw new BadRequestException(
+        'Only JPG, PNG, WEBP, or GIF images are allowed',
+      );
+    }
+
+    const targetFolder = isUploadFolder(folder) ? folder : 'misc';
+    const directory = path.join(UPLOAD_ROOT, targetFolder);
+    const fileName = `${randomUUID()}${extension}`;
+
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(path.join(directory, fileName), file.buffer);
+
+    return { url: `${getUploadsBaseUrl()}/${targetFolder}/${fileName}` };
   }
 }

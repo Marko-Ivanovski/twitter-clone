@@ -37,12 +37,13 @@ export default function EditProfilePage() {
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   // Email Modal State
-  const [oldEmail, setOldEmail] = useState('');
+  const [emailCurrentPassword, setEmailCurrentPassword] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [confirmNewEmail, setConfirmNewEmail] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
 
   // Password Modal State
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordErrors, setPasswordErrors] = useState<string[]>([]);
@@ -132,12 +133,6 @@ export default function EditProfilePage() {
     e.preventDefault();
     setEmailError(null);
 
-    // Client-side verification of old email (as requested)
-    if (oldEmail.toLowerCase() !== user?.email.toLowerCase()) {
-      setEmailError('Old email does not match.');
-      return;
-    }
-
     if (newEmail !== confirmNewEmail) {
       setEmailError('New emails do not match.');
       return;
@@ -150,12 +145,12 @@ export default function EditProfilePage() {
 
     setLoading(true);
     try {
-      await updateProfile({ email: newEmail });
+      await updateProfile({ email: newEmail, currentPassword: emailCurrentPassword });
       await refreshUser();
       setIsEmailModalOpen(false);
       setMessage({ type: 'success', text: 'Email updated successfully' });
       // Reset form
-      setOldEmail('');
+      setEmailCurrentPassword('');
       setNewEmail('');
       setConfirmNewEmail('');
     } catch (err: any) {
@@ -186,10 +181,11 @@ export default function EditProfilePage() {
 
     setLoading(true);
     try {
-      await updateProfile({ password: newPassword });
+      await updateProfile({ password: newPassword, currentPassword });
       setIsPasswordModalOpen(false);
       setMessage({ type: 'success', text: 'Password updated successfully' });
       // Reset form
+      setCurrentPassword('');
       setNewPassword('');
       setConfirmNewPassword('');
       setPasswordErrors([]);
@@ -366,14 +362,15 @@ export default function EditProfilePage() {
       >
         <form onSubmit={handleEmailSave} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-slate-300">Old Email</label>
-              <input 
-                type="email"
+              <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-slate-300">Current Password</label>
+              <input
+                type="password"
                 required
-                value={oldEmail}
-                onChange={e => setOldEmail(e.target.value)}
+                autoComplete="current-password"
+                value={emailCurrentPassword}
+                onChange={e => setEmailCurrentPassword(e.target.value)}
                 className="w-full rounded-md border border-gray-300 p-2 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-400"
-                placeholder="Enter current email"
+                placeholder="Enter your password"
               />
             </div>
              <div>
@@ -409,7 +406,7 @@ export default function EditProfilePage() {
                 </button>
                 <button 
                   type="submit"
-                  disabled={loading || !newEmail || !oldEmail || !confirmNewEmail}
+                  disabled={loading || !newEmail || !emailCurrentPassword || !confirmNewEmail}
                   className="px-4 py-2 text-sm font-semibold text-white bg-gray-900 hover:bg-gray-800 rounded-full disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                 >
                   {loading ? 'Saving...' : 'Save'}
@@ -425,6 +422,18 @@ export default function EditProfilePage() {
         title="Change Password"
       >
         <form onSubmit={handlePasswordSave} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-slate-300">Current Password</label>
+              <input
+                type="password"
+                required
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={e => setCurrentPassword(e.target.value)}
+                className="w-full rounded-md border border-gray-300 p-2 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-blue-400"
+                placeholder="Current password"
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-slate-300">New Password</label>
               <div className="relative">
@@ -491,7 +500,7 @@ export default function EditProfilePage() {
                 </button>
                 <button 
                   type="submit"
-                  disabled={loading || !newPassword || !confirmNewPassword || passwordErrors.length > 0}
+                  disabled={loading || !currentPassword || !newPassword || !confirmNewPassword || passwordErrors.length > 0}
                   className="px-4 py-2 text-sm font-semibold text-white bg-gray-900 hover:bg-gray-800 rounded-full disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                 >
                   {loading ? 'Saving...' : 'Save'}

@@ -11,7 +11,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
+import { isRecordNotFound, isUniqueViolation } from '../prisma/prisma-errors';
+import { isOwnUploadUrl } from '../uploads/upload-url';
 import { mapPostsForViewer, postInclude } from './post.mapper';
+import {
+  buildVisiblePostsWhere,
+  getFollowingIds,
+  visiblePostsWhere,
+} from './post-visibility';
 
 @Injectable()
 export class PostsService {
@@ -26,17 +33,21 @@ export class PostsService {
     viewerId?: string,
     type: 'all' | 'following' = 'all',
   ) {
-    let whereClause: Prisma.PostWhereInput = {};
+    let whereClause: Prisma.PostWhereInput;
 
     if (type === 'following') {
       if (!viewerId) {
         throw new UnauthorizedException('Unauthorized');
       }
-      const followingIds = await this.getFollowingIds(viewerId);
-      const filteredIds = followingIds.filter((id) => id !== viewerId);
-      whereClause = { authorId: { in: filteredIds } };
+      const followingIds = await getFollowingIds(this.prisma, viewerId);
+      whereClause = {
+        AND: [
+          { authorId: { in: followingIds } },
+          visiblePostsWhere(viewerId, followingIds),
+        ],
+      };
     } else {
-      whereClause = await this.buildVisibilityWhere(viewerId);
+      whereClause = await buildVisiblePostsWhere(this.prisma, viewerId);
     }
 
     const [total, posts] = await Promise.all([
@@ -70,6 +81,7 @@ export class PostsService {
     if (!content && !imageUrl) {
       throw new BadRequestException('Content or image is required');
     }
+    this.assertOwnImageUrl(imageUrl);
 
     const post = await this.prisma.post.create({
       data: {
@@ -124,8 +136,8 @@ export class PostsService {
           postId: targetId,
         },
       });
-    } catch (error: any) {
-      if (error.code !== 'P2002') {
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
         throw error;
       }
     }
@@ -149,8 +161,8 @@ export class PostsService {
           },
         },
       });
-    } catch (error: any) {
-      if (error.code !== 'P2025') {
+    } catch (error) {
+      if (!isRecordNotFound(error)) {
         throw error;
       }
     }
@@ -401,7 +413,9 @@ export class PostsService {
     }
 
     const nextContent =
-      data.content !== undefined ? (data.content as string | null) : post.content;
+      data.content !== undefined
+        ? (data.content as string | null)
+        : post.content;
     const nextImage =
       data.imageUrl !== undefined
         ? (data.imageUrl as string | null)
@@ -409,6 +423,9 @@ export class PostsService {
 
     if (!nextContent && !nextImage) {
       throw new BadRequestException('Content or image is required');
+    }
+    if (data.imageUrl) {
+      this.assertOwnImageUrl(data.imageUrl as string);
     }
 
     const updated = await this.prisma.post.update({
@@ -469,32 +486,10 @@ export class PostsService {
     return target;
   }
 
-  private async buildVisibilityWhere(viewerId?: string) {
-    if (!viewerId) {
-      return { visibility: PostVisibility.PUBLIC };
+  private assertOwnImageUrl(imageUrl: string) {
+    if (imageUrl && !isOwnUploadUrl(imageUrl)) {
+      throw new BadRequestException('Invalid image URL');
     }
-
-    const followingIds = await this.getFollowingIds(viewerId);
-
-    return {
-      OR: [
-        { visibility: PostVisibility.PUBLIC },
-        { authorId: viewerId },
-        {
-          visibility: PostVisibility.PRIVATE,
-          authorId: { in: followingIds },
-        },
-      ],
-    } satisfies Prisma.PostWhereInput;
-  }
-
-  private async getFollowingIds(viewerId: string) {
-    const follows = await this.prisma.follow.findMany({
-      where: { followerId: viewerId },
-      select: { followingId: true },
-    });
-
-    return follows.map((follow) => follow.followingId);
   }
 
   private async canViewPost(post: Post, viewerId?: string) {

@@ -23,13 +23,18 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(72)
+  currentPassword?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(100)
   displayName?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(500)
-  bio?: string; // Prisma schema says Bio String? @db.Text? Assuming default or typical length limit.
+  bio?: string;
 
   @IsOptional()
   @IsString()

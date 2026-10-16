@@ -81,7 +81,7 @@ export interface PostsResponse {
 }
 
 export async function getUserProfile(username: string): Promise<UserProfile> {
-  return apiFetch<UserProfile>(`/api/users/${username}`);
+  return apiFetch<UserProfile>(`/api/users/${encodeURIComponent(username)}`);
 }
 
 export async function searchUsers(
@@ -104,18 +104,18 @@ export async function getUserPosts(
   offset = 0,
 ): Promise<PostsResponse> {
   return apiFetch<PostsResponse>(
-    `/api/users/${username}/posts?limit=${limit}&offset=${offset}`,
+    `/api/users/${encodeURIComponent(username)}/posts?limit=${limit}&offset=${offset}`,
   );
 }
 
 export async function followUser(username: string): Promise<{ isFollowing: boolean }> {
-  return apiFetch<{ isFollowing: boolean }>(`/api/users/${username}/follow`, {
+  return apiFetch<{ isFollowing: boolean }>(`/api/users/${encodeURIComponent(username)}/follow`, {
     method: 'POST',
   });
 }
 
 export async function unfollowUser(username: string): Promise<{ isFollowing: boolean }> {
-  return apiFetch<{ isFollowing: boolean }>(`/api/users/${username}/follow`, {
+  return apiFetch<{ isFollowing: boolean }>(`/api/users/${encodeURIComponent(username)}/follow`, {
     method: 'DELETE',
   });
 }
@@ -123,6 +123,7 @@ export async function unfollowUser(username: string): Promise<{ isFollowing: boo
 export interface UpdateProfileInput {
   email?: string;
   password?: string;
+  currentPassword?: string;
   displayName?: string;
   bio?: string;
   avatarUrl?: string | null;

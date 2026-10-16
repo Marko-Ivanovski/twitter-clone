@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { ApiError, registerUser } from '../../lib/auth';
-import { checkPasswordStrength } from '@/utils/validation';
+import { checkPasswordStrength, USERNAME_PATTERN } from '@/utils/validation';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -58,11 +58,12 @@ export default function RegisterPage() {
 
   const canSubmit =
     email.trim().length > 0 &&
-    username.trim().length >= 3 &&
+    USERNAME_PATTERN.test(username) &&
     password.length >= 8 &&
     passwordErrors.length === 0 &&
     !submitting;
   const passwordHasError = passwordErrors.length > 0 && password.length > 0;
+  const usernameHasError = username.length > 0 && !USERNAME_PATTERN.test(username);
 
   return (
     <div className="gradient-bg flex min-h-screen items-center justify-center px-4 py-10">
@@ -92,7 +93,14 @@ export default function RegisterPage() {
               autoComplete="username"
               required
               minLength={3}
+              maxLength={30}
+              aria-invalid={usernameHasError}
             />
+            {usernameHasError && (
+              <span className="mt-1 block text-xs text-red-600 dark:text-red-300">
+                3 to 30 characters: letters, numbers, and underscores only.
+              </span>
+            )}
           </label>
           <label className="block text-sm font-medium text-gray-800 dark:text-slate-200">
             Display name (optional)

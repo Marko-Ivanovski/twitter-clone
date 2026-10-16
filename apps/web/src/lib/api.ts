@@ -29,6 +29,24 @@ const buildHeaders = (options: ApiRequestInit): HeadersInit => {
   return headers;
 };
 
+const SKIP_REFRESH_PATHS = ['/api/auth/login', '/api/auth/register', '/api/auth/refresh'];
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+// Concurrent 401s share one refresh request so the refresh token is used once.
+const refreshSession = (): Promise<boolean> => {
+  refreshInFlight ??= fetch(`${API_BASE_URL}/api/auth/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+    .then((response) => response.ok)
+    .catch(() => false)
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
+};
+
 export async function apiFetch<T>(
   path: string,
   options: ApiRequestInit = {},
@@ -43,12 +61,22 @@ export async function apiFetch<T>(
     timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...fetchOptions,
-    signal: fetchOptions.signal ?? controller.signal,
-    headers,
-    credentials: 'include',
-  });
+  const send = () =>
+    fetch(`${API_BASE_URL}${path}`, {
+      ...fetchOptions,
+      signal: fetchOptions.signal ?? controller.signal,
+      headers,
+      credentials: 'include',
+    });
+
+  let response = await send();
+  if (
+    response.status === 401 &&
+    !SKIP_REFRESH_PATHS.includes(path) &&
+    (await refreshSession())
+  ) {
+    response = await send();
+  }
 
   if (timeoutId) {
     clearTimeout(timeoutId);
