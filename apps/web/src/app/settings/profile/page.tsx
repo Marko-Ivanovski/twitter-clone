@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { getErrorMessage } from '@/lib/api';
 import { updateProfile } from '@/lib/users';
 import { Modal } from '@/components/ui/Modal';
 import { checkPasswordStrength } from '@/utils/validation';
@@ -92,9 +93,9 @@ export default function EditProfilePage() {
       setAvatarError(null);
       await refreshUser();
       setMessage({ type: 'success', text: 'Profile photo removed successfully' });
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setMessage({ type: 'error', text: err.message || 'Failed to remove profile photo' });
+      setMessage({ type: 'error', text: getErrorMessage(err, 'Failed to remove profile photo') });
     } finally {
       setRemovingAvatar(false);
     }
@@ -121,9 +122,9 @@ export default function EditProfilePage() {
       setAvatarFile(null); // Clear the file so preview uses the server URL
       setAvatarError(null);
       setMessage({ type: 'success', text: 'Profile updated successfully' });
-    } catch (err: any) {
+    } catch (err) {
        console.error(err);
-       setMessage({ type: 'error', text: err.message || 'Failed to update profile' });
+       setMessage({ type: 'error', text: getErrorMessage(err, 'Failed to update profile') });
     } finally {
       setLoading(false);
     }
@@ -153,9 +154,9 @@ export default function EditProfilePage() {
       setEmailCurrentPassword('');
       setNewEmail('');
       setConfirmNewEmail('');
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setEmailError(err.message || 'Failed to update email');
+      setEmailError(getErrorMessage(err, 'Failed to update email'));
     } finally {
       setLoading(false);
     }
@@ -189,9 +190,9 @@ export default function EditProfilePage() {
       setNewPassword('');
       setConfirmNewPassword('');
       setPasswordErrors([]);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setPasswordSubmitError(err.message || 'Failed to update password');
+      setPasswordSubmitError(getErrorMessage(err, 'Failed to update password'));
     } finally {
       setLoading(false);
     }

@@ -1,50 +1,24 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
+const PROTECTED_PREFIXES = ['/settings'];
 
-export async function middleware(request: NextRequest) {
+// Only an early redirect for visitors with no session at all. Token validity
+// is enforced by the API, and an expired access token is renewed client-side.
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const hasSession =
+    request.cookies.has('access_token') || request.cookies.has('refresh_token');
 
-  if (
-    pathname.startsWith('/login') ||
-    pathname.startsWith('/register') ||
-    pathname.startsWith('/_next') ||
-    pathname === '/favicon.ico'
-  ) {
+  if (hasSession || !PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return NextResponse.next();
   }
 
-  const protectedPrefixes = ['/settings'];
-  const isProtectedRoute = protectedPrefixes.some((prefix) =>
-    pathname.startsWith(prefix),
-  );
-
-  if (!isProtectedRoute) {
-    return NextResponse.next();
-  }
-
-  try {
-    const meResponse = await fetch(`${API_BASE_URL}/api/auth/me`, {
-      headers: {
-        cookie: request.headers.get('cookie') ?? '',
-      },
-      cache: 'no-store',
-    });
-
-    if (meResponse.status === 401) {
-      const loginUrl = new URL('/login', request.url);
-      loginUrl.searchParams.set('redirect', pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-  } catch {
-    return NextResponse.next();
-  }
-
-  return NextResponse.next();
+  const loginUrl = new URL('/login', request.url);
+  loginUrl.searchParams.set('redirect', pathname);
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/settings/:path*'],
 };

@@ -56,10 +56,10 @@ export class UsersService {
 
     return this.prisma.user.findMany({
       where: {
-        username: {
-          contains: trimmed,
-          mode: 'insensitive',
-        },
+        OR: [
+          { username: { contains: trimmed, mode: 'insensitive' } },
+          { displayName: { contains: trimmed, mode: 'insensitive' } },
+        ],
       },
       select: {
         id: true,

@@ -43,6 +43,8 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      API_BASE_URL: ${API_BASE_URL}
+      WEB_ORIGIN: ${WEB_ORIGIN}
     volumes:
       - ./apps/api/prisma:/app/prisma
       - ./apps/api/uploads:/app/uploads
@@ -53,13 +55,14 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
     depends_on:
       - api
     environment:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
-      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
     ports:
       - "${WEB_PORT}:3000"
 

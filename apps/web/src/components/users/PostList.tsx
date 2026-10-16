@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Heart, Lock, MessageCircle, Repeat2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { ApiError } from '@/lib/api';
+import { getErrorMessage } from '@/lib/api';
 import { CommentPreview, getUserPosts, getTimeline, PostItem } from '../../lib/users';
 import {
   addComment,
@@ -79,13 +79,6 @@ export function PostList({ username, type = 'user' }: PostListProps) {
       ...prev,
       [targetId]: { ...prev[targetId], [key]: value },
     }));
-  };
-
-  const getApiErrorMessage = (err: unknown, fallback: string) => {
-    if (err instanceof ApiError) {
-      return err.message || fallback;
-    }
-    return fallback;
   };
 
   const revokePreviewUrl = (preview?: string | null) => {
@@ -163,7 +156,7 @@ export function PostList({ username, type = 'user' }: PostListProps) {
         likedByMe: result.likedByMe,
         likeCount: result.likeCount,
       }));
-    } catch (err) {
+    } catch {
       updatePostsByTargetId(targetId, (current) => ({
         ...current,
         likedByMe: previous.likedByMe,
@@ -206,7 +199,7 @@ export function PostList({ username, type = 'user' }: PostListProps) {
         retweetedByMe: result.retweetedByMe,
         retweetCount: result.retweetCount,
       }));
-    } catch (err) {
+    } catch {
       updatePostsByTargetId(targetId, (current) => ({
         ...current,
         retweetedByMe: previous.retweetedByMe,
@@ -269,7 +262,7 @@ export function PostList({ username, type = 'user' }: PostListProps) {
     } catch (err) {
       setCommentErrors((prev) => ({
         ...prev,
-        [targetId]: getApiErrorMessage(err, 'Unable to add comment.'),
+        [targetId]: getErrorMessage(err, 'Unable to add comment.'),
       }));
     } finally {
       setCommentPending((prev) => ({ ...prev, [targetId]: false }));
@@ -334,7 +327,7 @@ export function PostList({ username, type = 'user' }: PostListProps) {
     } catch (err) {
       setReplyErrors((prev) => ({
         ...prev,
-        [comment.id]: getApiErrorMessage(err, 'Unable to add reply.'),
+        [comment.id]: getErrorMessage(err, 'Unable to add reply.'),
       }));
     } finally {
       setReplyPending((prev) => ({ ...prev, [comment.id]: false }));
@@ -414,7 +407,7 @@ export function PostList({ username, type = 'user' }: PostListProps) {
     } catch (err) {
       setEditErrors((prev) => ({
         ...prev,
-        [post.id]: getApiErrorMessage(err, 'Unable to update post.'),
+        [post.id]: getErrorMessage(err, 'Unable to update post.'),
       }));
     } finally {
       setEditPending((prev) => ({ ...prev, [post.id]: false }));
@@ -445,7 +438,7 @@ export function PostList({ username, type = 'user' }: PostListProps) {
         setEditingPostId(null);
       }
     } catch (err) {
-      setActionError(getApiErrorMessage(err, 'Unable to delete post.'));
+      setActionError(getErrorMessage(err, 'Unable to delete post.'));
     } finally {
       setDeletePending((prev) => ({ ...prev, [post.id]: false }));
     }

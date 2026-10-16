@@ -51,8 +51,8 @@ export function Navigation() {
         if (active) {
           setSearchResults(results);
         }
-      } catch (error: any) {
-        if (active && error?.name !== 'AbortError') {
+      } catch (error) {
+        if (active && !(error instanceof Error && error.name === 'AbortError')) {
           setSearchResults([]);
         }
       } finally {

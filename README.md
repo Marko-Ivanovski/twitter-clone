@@ -49,6 +49,7 @@ A simplified Twitter-style social feed built with Next.js, NestJS, and Postgres.
     API_PORT=3001
     PORT=3001
     API_BASE_URL=http://localhost:3001
+    WEB_ORIGIN=http://localhost:3000
     JWT_ACCESS_SECRET=replace-with-secure-random-string
     JWT_REFRESH_SECRET=replace-with-secure-random-string
 

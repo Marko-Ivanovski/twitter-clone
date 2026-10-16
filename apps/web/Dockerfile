@@ -8,6 +8,10 @@ RUN npm ci
 COPY tsconfig.json next.config.ts postcss.config.mjs ./
 COPY src ./src
 
+# NEXT_PUBLIC_* values are inlined into the client bundle at build time.
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+
 RUN npm run build
 
 FROM node:22-slim AS runner

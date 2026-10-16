@@ -6,7 +6,7 @@ Local URL: `http://localhost:3001/api`
 
 ## Authentication
 
-Auth is cookie-based using httpOnly JWT tokens. Read endpoints are public or optional-auth; all write endpoints require authentication. Passwords are hashed with bcrypt (10 rounds) on registration and verified on login. The API never returns password hashes.
+Auth is cookie-based using httpOnly JWT tokens. Read endpoints are public or optional-auth; all write endpoints require authentication. Passwords are hashed with bcrypt (10 rounds) on registration and verified on login. The API never returns password hashes. Login, register, and uploads are rate limited per IP.
 
 ## Endpoints (Summary)
 
@@ -23,11 +23,10 @@ Users:
 - GET `/api/users/:username/posts?limit=20&offset=0` - Paginated posts for a user.
 - POST `/api/users/:username/follow` - Follow a user.
 - DELETE `/api/users/:username/follow` - Unfollow a user.
-- PATCH `/api/users/me` - Update profile fields (display name, bio, avatar).
+- PATCH `/api/users/me` - Update profile fields (display name, bio, avatar). Changing email or password requires `currentPassword`, and a password change signs out other sessions.
 
 Posts:
 - GET `/api/posts?limit=10&offset=0&type=all|following` - Timeline feed with optional following filter.
-- GET `/api/posts/feed?limit=10&offset=0` - Timeline feed (all posts).
 - GET `/api/posts/:postId` - Single post details.
 - POST `/api/posts` - Create a new post (text and/or image).
 - PATCH `/api/posts/:postId` - Edit post content, image, or visibility.
@@ -41,7 +40,7 @@ Posts:
 
 Uploads:
 - POST `/api/uploads?folder=avatars|tweets` - Upload an image (multipart form-data `file`).
-- Files are served from `/api/uploads/<folder>/<filename>`.
+- Files are served from `/api/uploads/<folder>/<filename>`. Only JPG, PNG, WEBP, and GIF up to 5MB are accepted, detected from the file contents.
 
 Request notes:
 - `POST /api/posts` accepts `{ content?, imageUrl?, visibility? }` (content or imageUrl required).
@@ -50,7 +49,7 @@ Request notes:
 
 ## Database Schema
 
-- `users`: email, username, passwordHash, displayName, bio, avatarUrl
+- `users`: email, username, passwordHash, displayName, bio, avatarUrl, tokenVersion
 - `posts`: content, imageUrl, kind (ORIGINAL/RETWEET), visibility (PUBLIC/PRIVATE), originalPostId
 - `likes`: (userId, postId) unique pair
 - `follows`: (followerId, followingId) unique pair

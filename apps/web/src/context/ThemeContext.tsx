@@ -4,7 +4,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useState,
   type ReactNode,
 } from 'react';
@@ -19,15 +18,15 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-const getSystemTheme = () => {
-  if (typeof window === 'undefined') return 'light';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
+// The root layout's inline script applies the theme class before first paint.
+const readAppliedTheme = (): Theme =>
+  typeof document !== 'undefined' &&
+  document.documentElement.classList.contains('dark')
     ? 'dark'
     : 'light';
-};
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('light');
+  const [theme, setThemeState] = useState<Theme>(readAppliedTheme);
 
   const applyTheme = useCallback((next: Theme) => {
     setThemeState(next);
@@ -44,15 +43,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       window.localStorage.setItem('theme', next);
     }
   }, []);
-
-  useEffect(() => {
-    const stored = typeof window !== 'undefined'
-      ? window.localStorage.getItem('theme')
-      : null;
-    const initial =
-      stored === 'dark' || stored === 'light' ? stored : getSystemTheme();
-    applyTheme(initial);
-  }, [applyTheme]);
 
   const toggleTheme = useCallback(() => {
     applyTheme(theme === 'dark' ? 'light' : 'dark');

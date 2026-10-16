@@ -14,13 +14,16 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { AuthRequest } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { PostsService } from './posts.service';
+
+const clampLimit = (limit: number) => (limit < 1 || limit > 100 ? 20 : limit);
+const clampOffset = (offset: number) => Math.max(offset, 0);
 
 @Controller('posts')
 export class PostsController {
@@ -31,40 +34,22 @@ export class PostsController {
   async getTimeline(
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
-    @Query('type') type: 'all' | 'following' = 'all',
-    @Req() req: Request,
+    @Query('type') type: string | undefined,
+    @Req() req: AuthRequest,
   ) {
-    if (limit < 1 || limit > 100) limit = 20;
-    if (offset < 0) offset = 0;
-
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const userId = (req as any).user?.sub;
-    const normalizedType = type === 'following' ? 'following' : 'all';
-    return this.postsService.getTimeline(limit, offset, userId, normalizedType);
-  }
-
-  @Get('feed')
-  @UseGuards(OptionalJwtAuthGuard)
-  async getFeed(
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-    @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
-    @Req() req: Request,
-  ) {
-    if (limit < 1 || limit > 100) limit = 20;
-    if (offset < 0) offset = 0;
-
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const userId = (req as any).user?.sub;
-    return this.postsService.getTimeline(limit, offset, userId, 'all');
+    return this.postsService.getTimeline(
+      clampLimit(limit),
+      clampOffset(offset),
+      req.user?.sub,
+      type === 'following' ? 'following' : 'all',
+    );
   }
 
   @Post()
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)
-  async createPost(@Body() dto: CreatePostDto, @Req() req: Request) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const userId = (req as any).user.sub;
-    return this.postsService.createPost(userId, dto);
+  async createPost(@Body() dto: CreatePostDto, @Req() req: AuthRequest) {
+    return this.postsService.createPost(req.user!.sub, dto);
   }
 
   @Patch(':postId')
@@ -72,60 +57,49 @@ export class PostsController {
   async updatePost(
     @Param('postId') postId: string,
     @Body() dto: UpdatePostDto,
-    @Req() req: Request,
+    @Req() req: AuthRequest,
   ) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const userId = (req as any).user.sub;
-    return this.postsService.updatePost(postId, userId, dto);
+    return this.postsService.updatePost(postId, req.user!.sub, dto);
   }
 
   @Delete(':postId')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
-  async deletePost(@Param('postId') postId: string, @Req() req: Request) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const userId = (req as any).user.sub;
-    await this.postsService.deletePost(postId, userId);
+  async deletePost(@Param('postId') postId: string, @Req() req: AuthRequest) {
+    await this.postsService.deletePost(postId, req.user!.sub);
   }
 
   @Get(':postId')
   @UseGuards(OptionalJwtAuthGuard)
-  async getPost(@Param('postId') postId: string, @Req() req: Request) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const userId = (req as any).user?.sub;
-    return this.postsService.getPostById(postId, userId);
+  async getPost(@Param('postId') postId: string, @Req() req: AuthRequest) {
+    return this.postsService.getPostById(postId, req.user?.sub);
   }
 
   @Post(':postId/like')
   @UseGuards(JwtAuthGuard)
-  async likePost(@Param('postId') postId: string, @Req() req: Request) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const userId = (req as any).user.sub;
-    return this.postsService.likePost(postId, userId);
+  async likePost(@Param('postId') postId: string, @Req() req: AuthRequest) {
+    return this.postsService.likePost(postId, req.user!.sub);
   }
 
   @Delete(':postId/like')
   @UseGuards(JwtAuthGuard)
-  async unlikePost(@Param('postId') postId: string, @Req() req: Request) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const userId = (req as any).user.sub;
-    return this.postsService.unlikePost(postId, userId);
+  async unlikePost(@Param('postId') postId: string, @Req() req: AuthRequest) {
+    return this.postsService.unlikePost(postId, req.user!.sub);
   }
 
   @Post(':postId/retweet')
   @UseGuards(JwtAuthGuard)
-  async retweetPost(@Param('postId') postId: string, @Req() req: Request) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const userId = (req as any).user.sub;
-    return this.postsService.retweetPost(postId, userId);
+  async retweetPost(@Param('postId') postId: string, @Req() req: AuthRequest) {
+    return this.postsService.retweetPost(postId, req.user!.sub);
   }
 
   @Delete(':postId/retweet')
   @UseGuards(JwtAuthGuard)
-  async unretweetPost(@Param('postId') postId: string, @Req() req: Request) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const userId = (req as any).user.sub;
-    return this.postsService.unretweetPost(postId, userId);
+  async unretweetPost(
+    @Param('postId') postId: string,
+    @Req() req: AuthRequest,
+  ) {
+    return this.postsService.unretweetPost(postId, req.user!.sub);
   }
 
   @Get(':postId/comments')
@@ -134,14 +108,14 @@ export class PostsController {
     @Param('postId') postId: string,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
-    @Req() req: Request,
+    @Req() req: AuthRequest,
   ) {
-    if (limit < 1 || limit > 100) limit = 20;
-    if (offset < 0) offset = 0;
-
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const userId = (req as any).user?.sub;
-    return this.postsService.getComments(postId, limit, offset, userId);
+    return this.postsService.getComments(
+      postId,
+      clampLimit(limit),
+      clampOffset(offset),
+      req.user?.sub,
+    );
   }
 
   @Post(':postId/comments')
@@ -150,10 +124,8 @@ export class PostsController {
   async addComment(
     @Param('postId') postId: string,
     @Body() dto: CreateCommentDto,
-    @Req() req: Request,
+    @Req() req: AuthRequest,
   ) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-    const userId = (req as any).user.sub;
-    return this.postsService.addComment(postId, userId, dto);
+    return this.postsService.addComment(postId, req.user!.sub, dto);
   }
 }

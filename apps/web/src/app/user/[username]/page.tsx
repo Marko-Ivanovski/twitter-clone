@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { UserProfile } from '../../../components/users/UserProfile';
 import { PostList } from '../../../components/users/PostList';
-import { getUserProfile, UserProfile as UserProfileType } from '../../../lib/users';
+import { ApiError } from '@/lib/api';
+import { getUserProfile, UserProfile as UserProfileType } from '@/lib/users';
 
 export default function UserPage() {
   const params = useParams();
@@ -23,9 +24,9 @@ export default function UserPage() {
         const data = await getUserProfile(username);
         setUser(data);
         setError(null);
-      } catch (err: any) {
+      } catch (err) {
         console.error(err);
-        if (err?.status === 404) {
+        if (err instanceof ApiError && err.status === 404) {
           setError('User not found');
         } else {
           setError('Failed to load profile');

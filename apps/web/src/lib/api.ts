@@ -107,3 +107,6 @@ export async function apiFetch<T>(
 
   return data as T;
 }
+
+export const getErrorMessage = (err: unknown, fallback: string): string =>
+  err instanceof Error && err.message ? err.message : fallback;
