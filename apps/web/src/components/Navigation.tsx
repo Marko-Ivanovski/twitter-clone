@@ -8,6 +8,7 @@ import { LogOut, Moon, Search, Settings, Sun, User } from 'lucide-react';
 import { searchUsers, UserSearchResult } from '@/lib/users';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { buildAvatarUrl, setAvatarFallback } from '@/utils/avatar';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 export function Navigation() {
   const { user, logout } = useAuth();
@@ -146,7 +147,9 @@ export function Navigation() {
               Log in
             </Link>
           ) : (
-            <div className="relative" ref={dropdownRef}>
+            <div className="flex items-center gap-1">
+              <NotificationBell />
+              <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="flex items-center gap-2 rounded-full p-1 transition hover:bg-gray-100 dark:hover:bg-slate-800"
@@ -205,6 +208,7 @@ export function Navigation() {
                   </div>
                 </div>
               )}
+              </div>
             </div>
           )}
         </div>
