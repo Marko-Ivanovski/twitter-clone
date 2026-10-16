@@ -1,4 +1,4 @@
-﻿# Sixcore Project Web (Next.js)
+﻿# Twitter Clone Web (Next.js)
 
 Frontend for the Twitter Clone app, built with Next.js App Router and Tailwind CSS.
 

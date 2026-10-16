@@ -1,4 +1,4 @@
-# Twitter Clone (Sixcore Project)
+# Twitter Clone
 
 A simplified Twitter-style social feed built with Next.js, NestJS, and Postgres. Public browsing is supported, while posting and interactions require an account.
 

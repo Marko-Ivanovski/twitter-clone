@@ -1,4 +1,4 @@
-# Sixcore Project API (NestJS)
+# Twitter Clone API (NestJS)
 
 The backend service for the Twitter Clone app. Base URL is `/api`.
 
