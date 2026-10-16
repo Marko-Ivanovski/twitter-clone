@@ -235,6 +235,18 @@ export class PostsService {
       throw new BadRequestException('Private posts cannot be retweeted');
     }
 
+    if (originalPost.authorId !== userId) {
+      const author = await this.prisma.user.findUnique({
+        where: { id: originalPost.authorId },
+        select: { isPrivate: true },
+      });
+      if (author?.isPrivate) {
+        throw new BadRequestException(
+          'Posts from private accounts cannot be retweeted',
+        );
+      }
+    }
+
     const existing = await this.prisma.post.findFirst({
       where: {
         authorId: userId,
@@ -577,17 +589,26 @@ export class PostsService {
     }
   }
 
-  private async canViewPost(post: Post, viewerId?: string) {
-    if (post.visibility === PostVisibility.PUBLIC) {
+  private async canViewPost(
+    post: Pick<Post, 'visibility' | 'authorId'>,
+    viewerId?: string,
+  ) {
+    if (viewerId && post.authorId === viewerId) {
       return true;
+    }
+
+    if (post.visibility === PostVisibility.PUBLIC) {
+      const author = await this.prisma.user.findUnique({
+        where: { id: post.authorId },
+        select: { isPrivate: true },
+      });
+      if (author && !author.isPrivate) {
+        return true;
+      }
     }
 
     if (!viewerId) {
       return false;
-    }
-
-    if (post.authorId === viewerId) {
-      return true;
     }
 
     const follow = await this.prisma.follow.findUnique({

@@ -47,6 +47,7 @@ const makePrisma = () => ({
     create: jest.fn().mockResolvedValue({ id: 'new-comment' }),
     delete: jest.fn().mockResolvedValue({}),
   },
+  user: { findUnique: jest.fn().mockResolvedValue({ isPrivate: false }) },
   follow: { findUnique: jest.fn() },
 });
 
@@ -282,6 +283,39 @@ describe('PostsService', () => {
         actorId: 'fan',
         postId: 'post-1',
       });
+    });
+  });
+
+  describe('private accounts', () => {
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue({ isPrivate: true });
+    });
+
+    it('hides a public post of a private account from non-followers', async () => {
+      prisma.follow.findUnique.mockResolvedValue(null);
+      await expect(
+        service.likePost('post-1', 'stranger'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('shows it to an approved follower', async () => {
+      prisma.follow.findUnique.mockResolvedValue({});
+      await expect(service.likePost('post-1', 'follower')).resolves.toEqual(
+        expect.objectContaining({ likedByMe: true }),
+      );
+    });
+
+    it('blocks followers from retweeting a private account post', async () => {
+      prisma.follow.findUnique.mockResolvedValue({});
+      await expect(service.retweetPost('post-1', 'follower')).rejects.toThrow(
+        'Posts from private accounts cannot be retweeted',
+      );
+      expect(prisma.post.create).not.toHaveBeenCalled();
+    });
+
+    it('still lets the owner retweet their own post', async () => {
+      await service.retweetPost('post-1', 'post-author');
+      expect(prisma.post.create).toHaveBeenCalled();
     });
   });
 });

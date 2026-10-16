@@ -1,23 +1,28 @@
 import { PostKind, PostVisibility } from '@prisma/client';
 import { visiblePostsWhere } from './post-visibility';
 
+const PUBLIC_OF_PUBLIC_ACCOUNT = {
+  visibility: PostVisibility.PUBLIC,
+  author: { isPrivate: false },
+};
+
 describe('visiblePostsWhere', () => {
-  it('limits anonymous viewers to public originals and retweets of public posts', () => {
+  it('limits anonymous viewers to public posts of public accounts, retweets included', () => {
     expect(visiblePostsWhere(undefined, [])).toEqual({
       OR: [
-        { kind: PostKind.ORIGINAL, visibility: PostVisibility.PUBLIC },
+        { kind: PostKind.ORIGINAL, ...PUBLIC_OF_PUBLIC_ACCOUNT },
         {
           kind: PostKind.RETWEET,
-          originalPost: { is: { visibility: PostVisibility.PUBLIC } },
+          originalPost: { is: PUBLIC_OF_PUBLIC_ACCOUNT },
         },
       ],
     });
   });
 
-  it('applies the same readability rule to originals and to retweeted originals', () => {
+  it('adds everything by the viewer and the accounts they follow', () => {
     const readable = {
       OR: [
-        { visibility: PostVisibility.PUBLIC },
+        PUBLIC_OF_PUBLIC_ACCOUNT,
         { authorId: { in: ['viewer', 'friend'] } },
       ],
     };

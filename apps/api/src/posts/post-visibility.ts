@@ -13,17 +13,23 @@ export async function getFollowingIds(
   return follows.map((follow) => follow.followingId);
 }
 
+// A post is public to everyone only if its author's account is public too.
+const PUBLIC_OF_PUBLIC_ACCOUNT: Prisma.PostWhereInput = {
+  visibility: PostVisibility.PUBLIC,
+  author: { isPrivate: false },
+};
+
 function readableBy(
   viewerId: string | undefined,
   followingIds: string[],
 ): Prisma.PostWhereInput {
   if (!viewerId) {
-    return { visibility: PostVisibility.PUBLIC };
+    return PUBLIC_OF_PUBLIC_ACCOUNT;
   }
 
   return {
     OR: [
-      { visibility: PostVisibility.PUBLIC },
+      PUBLIC_OF_PUBLIC_ACCOUNT,
       { authorId: { in: [viewerId, ...followingIds] } },
     ],
   };
