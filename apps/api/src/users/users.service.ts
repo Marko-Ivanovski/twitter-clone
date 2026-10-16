@@ -5,8 +5,9 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Prisma, User } from '@prisma/client';
+import { NotificationType, Prisma, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { isRecordNotFound, isUniqueViolation } from '../prisma/prisma-errors';
 import { mapPostsForViewer, postInclude } from '../posts/post.mapper';
@@ -28,7 +29,10 @@ interface UpdateUserResult {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   findByEmail(email: string): Promise<User | null> {
     return this.prisma.user.findUnique({
@@ -243,6 +247,11 @@ export class UsersService {
           followingId: targetUser.id,
         },
       });
+      await this.notifications.notify({
+        type: NotificationType.FOLLOW,
+        actorId: followerId,
+        recipientId: targetUser.id,
+      });
       return { success: true };
     } catch (error) {
       if (isUniqueViolation(error)) {
@@ -273,6 +282,12 @@ export class UsersService {
         throw error;
       }
     }
+
+    await this.notifications.retract({
+      type: NotificationType.FOLLOW,
+      actorId: followerId,
+      recipientId: targetUser.id,
+    });
 
     return { success: true };
   }
