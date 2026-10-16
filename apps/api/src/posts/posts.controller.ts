@@ -118,6 +118,17 @@ export class PostsController {
     );
   }
 
+  @Delete(':postId/comments/:commentId')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteComment(
+    @Param('postId') postId: string,
+    @Param('commentId') commentId: string,
+    @Req() req: AuthRequest,
+  ) {
+    await this.postsService.deleteComment(postId, commentId, req.user!.sub);
+  }
+
   @Post(':postId/comments')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.CREATED)

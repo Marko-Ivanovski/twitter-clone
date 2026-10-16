@@ -9,7 +9,7 @@ import {
 export class CreateCommentDto {
   @IsString()
   @IsNotEmpty()
-  @MaxLength(100)
+  @MaxLength(280)
   content!: string;
 
   @IsOptional()

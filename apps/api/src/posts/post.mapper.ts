@@ -14,7 +14,7 @@ const commentReplyOrderBy: Prisma.CommentOrderByWithRelationInput[] = [
 const commentPreviewInclude = {
   where: { parentCommentId: null },
   orderBy: commentPreviewOrderBy,
-  take: 10,
+  take: 3,
   include: {
     author: {
       select: {
@@ -25,7 +25,7 @@ const commentPreviewInclude = {
     },
     replies: {
       orderBy: commentReplyOrderBy,
-      take: 5,
+      take: 3,
       include: {
         author: {
           select: {

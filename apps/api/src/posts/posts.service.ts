@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -23,9 +22,6 @@ import {
 @Injectable()
 export class PostsService {
   constructor(private readonly prisma: PrismaService) {}
-
-  private readonly maxCommentsPerPost = 10;
-  private readonly maxRepliesPerComment = 5;
 
   async getTimeline(
     limit: number,
@@ -334,27 +330,16 @@ export class PostsService {
         where: { id: dto.parentCommentId },
       });
 
-      if (!parentComment || parentComment.postId !== targetPostId) {
+      // Threads are one level deep: replies attach to top-level comments only.
+      if (
+        !parentComment ||
+        parentComment.postId !== targetPostId ||
+        parentComment.parentCommentId !== null
+      ) {
         throw new BadRequestException('Invalid parent comment');
       }
 
-      const replyCount = await this.prisma.comment.count({
-        where: { parentCommentId: parentComment.id },
-      });
-
-      if (replyCount >= this.maxRepliesPerComment) {
-        throw new ConflictException('Reply limit reached');
-      }
-
       parentCommentId = parentComment.id;
-    } else {
-      const commentCount = await this.prisma.comment.count({
-        where: { postId: targetPostId, parentCommentId: null },
-      });
-
-      if (commentCount >= this.maxCommentsPerPost) {
-        throw new ConflictException('Comment limit reached');
-      }
     }
 
     const comment = await this.prisma.comment.create({
@@ -376,6 +361,23 @@ export class PostsService {
     });
 
     return { ...comment, replies: [] };
+  }
+
+  async deleteComment(postId: string, commentId: string, userId: string) {
+    const targetPost = await this.resolveTargetPost(postId, userId);
+    const comment = await this.prisma.comment.findUnique({
+      where: { id: commentId },
+    });
+
+    if (!comment || comment.postId !== targetPost.id) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    if (comment.authorId !== userId && targetPost.authorId !== userId) {
+      throw new ForbiddenException('Cannot delete this comment');
+    }
+
+    await this.prisma.comment.delete({ where: { id: commentId } });
   }
 
   async updatePost(postId: string, userId: string, dto: UpdatePostDto) {

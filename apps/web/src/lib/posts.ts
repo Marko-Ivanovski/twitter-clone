@@ -31,7 +31,7 @@ export async function addComment(
 
 export async function updatePost(
   postId: string,
-  data: { content?: string; imageUrl?: string | null },
+  data: { content?: string; imageUrl?: string | null; visibility?: 'PUBLIC' | 'PRIVATE' },
 ): Promise<PostItem> {
   return apiFetch<PostItem>(`/api/posts/${postId}`, {
     method: 'PATCH',
@@ -68,6 +68,34 @@ export async function retweetPost(postId: string): Promise<{ retweetedByMe: bool
 
 export async function unretweetPost(postId: string): Promise<{ retweetedByMe: boolean; retweetCount: number }> {
   return apiFetch<{ retweetedByMe: boolean; retweetCount: number }>(`/api/posts/${postId}/retweet`, {
+    method: 'DELETE',
+  });
+}
+
+export interface CommentsResponse {
+  items: CommentItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+export async function getPost(postId: string): Promise<PostItem> {
+  return apiFetch<PostItem>(`/api/posts/${encodeURIComponent(postId)}`);
+}
+
+export async function getComments(
+  postId: string,
+  limit = 20,
+  offset = 0,
+): Promise<CommentsResponse> {
+  return apiFetch<CommentsResponse>(
+    `/api/posts/${encodeURIComponent(postId)}/comments?limit=${limit}&offset=${offset}`,
+  );
+}
+
+export async function deleteComment(postId: string, commentId: string): Promise<void> {
+  return apiFetch<void>(`/api/posts/${postId}/comments/${commentId}`, {
     method: 'DELETE',
   });
 }

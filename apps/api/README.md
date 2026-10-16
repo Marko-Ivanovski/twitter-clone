@@ -37,6 +37,7 @@ Posts:
 - DELETE `/api/posts/:postId/retweet` - Remove a retweet.
 - GET `/api/posts/:postId/comments?limit=20&offset=0` - Paginated comments for a post.
 - POST `/api/posts/:postId/comments` - Add a comment or reply.
+- DELETE `/api/posts/:postId/comments/:commentId` - Delete a comment (its author or the post's author). Replies are removed with their parent.
 
 Uploads:
 - POST `/api/uploads?folder=avatars|tweets` - Upload an image (multipart form-data `file`).
