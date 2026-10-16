@@ -1,6 +1,13 @@
 import { API_BASE_URL, apiFetch } from './api';
 
-export type NotificationType = 'LIKE' | 'COMMENT' | 'REPLY' | 'RETWEET' | 'FOLLOW';
+export type NotificationType =
+  | 'LIKE'
+  | 'COMMENT'
+  | 'REPLY'
+  | 'RETWEET'
+  | 'FOLLOW'
+  | 'FOLLOW_REQUEST'
+  | 'FOLLOW_ACCEPTED';
 
 export interface NotificationItem {
   id: string;
