@@ -137,6 +137,17 @@ describe('NotificationsService', () => {
     expect(page.items[0].postSnippet).toBe('A post');
   });
 
+  it('omits the post text from replies, whose recipient may not be able to view the post', async () => {
+    prisma.notification.findMany.mockResolvedValue([
+      { ...ROW, type: NotificationType.REPLY },
+    ]);
+
+    const page = await service.list('bob', 20, 0);
+
+    expect(page.items[0].postSnippet).toBeNull();
+    expect(page.items[0].commentSnippet).not.toBeNull();
+  });
+
   it('marks only the caller’s unread rows as read', async () => {
     await service.markAllRead('bob');
 

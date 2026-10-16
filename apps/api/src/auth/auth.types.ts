@@ -3,6 +3,7 @@ import { Request } from 'express';
 export interface JwtPayload {
   sub: string;
   ver?: number;
+  exp?: number;
 }
 
 export interface AuthRequest extends Request {

@@ -13,7 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
-import { interval, map, merge, Observable } from 'rxjs';
+import { interval, map, merge, Observable, takeUntil, timer } from 'rxjs';
 import type { AuthRequest } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { NotificationsService } from './notifications.service';
@@ -56,7 +56,9 @@ export class NotificationsController {
     await this.notificationsService.markAllRead(req.user!.sub);
   }
 
-  // The heartbeat keeps proxies from closing an idle connection.
+  // The heartbeat keeps proxies from closing an idle connection. The stream
+  // ends when the access token expires, so a revoked or logged-out session
+  // cannot keep listening: reconnecting goes back through auth and refresh.
   @Sse('stream')
   @SkipThrottle()
   stream(@Req() req: AuthRequest): Observable<MessageEvent> {
@@ -68,6 +70,7 @@ export class NotificationsController {
     const heartbeat = interval(HEARTBEAT_MS).pipe(
       map((): MessageEvent => ({ type: 'ping', data: '' })),
     );
-    return merge(notifications, heartbeat);
+    const expiresInMs = Math.max(0, (req.user!.exp ?? 0) * 1000 - Date.now());
+    return merge(notifications, heartbeat).pipe(takeUntil(timer(expiresInMs)));
   }
 }

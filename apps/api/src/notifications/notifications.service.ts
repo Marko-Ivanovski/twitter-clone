@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   NotificationItem,
@@ -9,6 +9,14 @@ import {
 import { NotificationsStream } from './notifications.stream';
 
 const SNIPPET_LENGTH = 80;
+
+// Only these go to the post's own author. A reply goes to a commenter who may
+// have lost access to a private post, so it never carries the post's text.
+const POST_AUTHOR_TYPES: NotificationType[] = [
+  NotificationType.LIKE,
+  NotificationType.COMMENT,
+  NotificationType.RETWEET,
+];
 
 const notificationInclude = {
   actor: { select: { username: true, displayName: true, avatarUrl: true } },
@@ -34,7 +42,9 @@ const toNotificationItem = (row: NotificationRow): NotificationItem => ({
   read: row.readAt !== null,
   actor: row.actor,
   postId: row.postId,
-  postSnippet: toSnippet(row.post?.content),
+  postSnippet: POST_AUTHOR_TYPES.includes(row.type)
+    ? toSnippet(row.post?.content)
+    : null,
   commentSnippet: toSnippet(row.comment?.content),
 });
 
