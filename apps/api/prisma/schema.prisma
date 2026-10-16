@@ -34,6 +34,9 @@ model User {
 
   following Follow[] @relation("UserFollowing")
   followers Follow[] @relation("UserFollowers")
+
+  notifications     Notification[] @relation("NotificationRecipient")
+  sentNotifications Notification[] @relation("NotificationActor")
 }
 
 model Post {
@@ -53,6 +56,7 @@ model Post {
 
   likes    Like[]
   comments Comment[]
+  notifications Notification[]
 
   @@index([authorId, createdAt])
   @@index([originalPostId])
@@ -97,8 +101,36 @@ model Comment {
   author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
   parentComment Comment? @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
   replies Comment[] @relation("CommentReplies")
+  notifications Notification[]
 
   @@index([postId, createdAt])
   @@index([authorId])
   @@index([parentCommentId])
+}
+
+enum NotificationType {
+  LIKE
+  COMMENT
+  REPLY
+  RETWEET
+  FOLLOW
+}
+
+model Notification {
+  id          String           @id @default(uuid())
+  recipientId String
+  actorId     String
+  type        NotificationType
+  postId      String?
+  commentId   String?
+  readAt      DateTime?
+  createdAt   DateTime         @default(now())
+
+  recipient User     @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor     User     @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Cascade)
+  post      Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, createdAt])
+  @@index([actorId, type])
 }
