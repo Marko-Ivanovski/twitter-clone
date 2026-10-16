@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsOptional,
   IsString,
@@ -39,4 +40,8 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   avatarUrl?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isPrivate?: boolean;
 }

@@ -5,6 +5,7 @@ export interface UserDto {
   displayName: string | null;
   bio: string | null;
   avatarUrl: string | null;
+  isPrivate: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -16,6 +17,7 @@ type UserShape = {
   displayName: string | null;
   bio: string | null;
   avatarUrl: string | null;
+  isPrivate: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -28,6 +30,7 @@ export const toUserDto = (user: UserShape): UserDto => {
     displayName,
     bio,
     avatarUrl,
+    isPrivate,
     createdAt,
     updatedAt,
   } = user;
@@ -39,6 +42,7 @@ export const toUserDto = (user: UserShape): UserDto => {
     displayName: displayName ?? null,
     bio: bio ?? null,
     avatarUrl: avatarUrl ?? null,
+    isPrivate,
     createdAt,
     updatedAt,
   };

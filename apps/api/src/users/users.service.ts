@@ -5,7 +5,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Prisma, User } from '@prisma/client';
+import { PostVisibility, Prisma, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { isUniqueViolation } from '../prisma/prisma-errors';
@@ -70,6 +70,7 @@ export class UsersService {
         username: true,
         displayName: true,
         avatarUrl: true,
+        isPrivate: true,
       },
       orderBy: {
         username: 'asc',
@@ -111,6 +112,7 @@ export class UsersService {
       displayName: dto.displayName,
       bio: dto.bio,
       avatarUrl: dto.avatarUrl,
+      isPrivate: dto.isPrivate,
     };
     if (emailChanged) {
       data.email = email;
@@ -120,15 +122,21 @@ export class UsersService {
       data.tokenVersion = { increment: 1 };
     }
 
+    let user: User;
     try {
-      const user = await this.prisma.user.update({ where: { id }, data });
-      return { user, passwordChanged };
+      user = await this.prisma.user.update({ where: { id }, data });
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException('Email already in use');
       }
       throw error;
     }
+
+    if (currentUser.isPrivate && !user.isPrivate) {
+      await this.follows.acceptAllPending(id);
+    }
+
+    return { user, passwordChanged };
   }
 
   async getProfile(username: string, viewerId?: string) {
@@ -140,6 +148,7 @@ export class UsersService {
         displayName: true,
         bio: true,
         avatarUrl: true,
+        isPrivate: true,
         createdAt: true,
         updatedAt: true,
         _count: {
@@ -155,30 +164,29 @@ export class UsersService {
       return null;
     }
 
-    let isFollowing = false;
-    if (viewerId && viewerId !== user.id) {
-      const follow = await this.prisma.follow.findUnique({
-        where: {
-          followerId_followingId: {
-            followerId: viewerId,
-            followingId: user.id,
-          },
-        },
-      });
-      isFollowing = !!follow;
-    }
+    const { _count, ...profile } = user;
+    const followStatus = await this.follows.getStatus(viewerId, user.id);
+    const canViewPosts =
+      !user.isPrivate || viewerId === user.id || followStatus === 'following';
 
-    const visibleWhere = await buildVisiblePostsWhere(this.prisma, viewerId);
-    const postsCount = await this.prisma.post.count({
-      where: { AND: [{ authorId: user.id }, visibleWhere] },
-    });
+    // A locked profile still shows a post count, limited to public posts.
+    const postsWhere: Prisma.PostWhereInput = canViewPosts
+      ? {
+          AND: [
+            { authorId: user.id },
+            await buildVisiblePostsWhere(this.prisma, viewerId),
+          ],
+        }
+      : { authorId: user.id, visibility: PostVisibility.PUBLIC };
+    const postsCount = await this.prisma.post.count({ where: postsWhere });
 
     return {
-      ...user,
+      ...profile,
       postsCount,
-      followersCount: user._count?.followers ?? 0,
-      followingCount: user._count?.following ?? 0,
-      isFollowing,
+      followersCount: _count.followers,
+      followingCount: _count.following,
+      followStatus,
+      canViewPosts,
     };
   }
 
@@ -192,11 +200,20 @@ export class UsersService {
       where: { username: username.toLowerCase() },
       select: {
         id: true,
+        isPrivate: true,
       },
     });
 
     if (!user) {
       return null;
+    }
+
+    if (
+      user.isPrivate &&
+      viewerId !== user.id &&
+      (await this.follows.getStatus(viewerId, user.id)) !== 'following'
+    ) {
+      throw new ForbiddenException('This account is private');
     }
 
     const visibleWhere = await buildVisiblePostsWhere(this.prisma, viewerId);
