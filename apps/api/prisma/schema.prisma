@@ -24,6 +24,7 @@ model User {
   displayName  String?
   bio          String?
   avatarUrl    String?
+  isPrivate    Boolean  @default(false)
   tokenVersion Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -37,6 +38,9 @@ model User {
 
   notifications     Notification[] @relation("NotificationRecipient")
   sentNotifications Notification[] @relation("NotificationActor")
+
+  sentFollowRequests     FollowRequest[] @relation("FollowRequestRequester")
+  receivedFollowRequests FollowRequest[] @relation("FollowRequestTarget")
 }
 
 model Post {
@@ -116,6 +120,8 @@ enum NotificationType {
   REPLY
   RETWEET
   FOLLOW
+  FOLLOW_REQUEST
+  FOLLOW_ACCEPTED
 }
 
 model Notification {
@@ -135,4 +141,16 @@ model Notification {
 
   @@index([recipientId, createdAt])
   @@index([actorId, type])
+}
+
+model FollowRequest {
+  requesterId String
+  targetId    String
+  createdAt   DateTime @default(now())
+
+  requester User @relation("FollowRequestRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  target    User @relation("FollowRequestTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@id([requesterId, targetId])
+  @@index([targetId, createdAt])
 }
