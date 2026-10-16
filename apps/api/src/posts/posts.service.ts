@@ -5,7 +5,14 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Post, PostKind, PostVisibility, Prisma } from '@prisma/client';
+import {
+  NotificationType,
+  Post,
+  PostKind,
+  PostVisibility,
+  Prisma,
+} from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -23,7 +30,10 @@ const MAX_REPLIES_PER_COMMENT = 50;
 
 @Injectable()
 export class PostsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async getTimeline(
     limit: number,
@@ -127,6 +137,7 @@ export class PostsService {
     const target = await this.resolveTargetPost(postId, userId);
     const targetId = target.id;
 
+    let created = false;
     try {
       await this.prisma.like.create({
         data: {
@@ -134,10 +145,20 @@ export class PostsService {
           postId: targetId,
         },
       });
+      created = true;
     } catch (error) {
       if (!isUniqueViolation(error)) {
         throw error;
       }
+    }
+
+    if (created) {
+      await this.notifications.notify({
+        type: NotificationType.LIKE,
+        actorId: userId,
+        recipientId: target.authorId,
+        postId: targetId,
+      });
     }
 
     const likeCount = await this.prisma.like.count({
@@ -164,6 +185,12 @@ export class PostsService {
         throw error;
       }
     }
+
+    await this.notifications.retract({
+      type: NotificationType.LIKE,
+      actorId: userId,
+      postId: targetId,
+    });
 
     const likeCount = await this.prisma.like.count({
       where: { postId: targetId },
@@ -225,6 +252,12 @@ export class PostsService {
           visibility: PostVisibility.PUBLIC,
         },
       });
+      await this.notifications.notify({
+        type: NotificationType.RETWEET,
+        actorId: userId,
+        recipientId: originalPost.authorId,
+        postId: originalPostId,
+      });
     }
 
     const retweetCount = await this.prisma.post.count({
@@ -254,6 +287,11 @@ export class PostsService {
         kind: PostKind.RETWEET,
         originalPostId,
       },
+    });
+    await this.notifications.retract({
+      type: NotificationType.RETWEET,
+      actorId: userId,
+      postId: originalPostId,
     });
 
     const retweetCount = await this.prisma.post.count({
@@ -334,6 +372,9 @@ export class PostsService {
     }
 
     let parentCommentId: string | null = null;
+    let notificationType: NotificationType = NotificationType.COMMENT;
+    let recipientId = targetPost.authorId;
+
     if (dto.parentCommentId) {
       const parentComment = await this.prisma.comment.findUnique({
         where: { id: dto.parentCommentId },
@@ -349,6 +390,8 @@ export class PostsService {
       }
 
       parentCommentId = parentComment.id;
+      notificationType = NotificationType.REPLY;
+      recipientId = parentComment.authorId;
     }
 
     const comment = await this.prisma.comment.create({
@@ -367,6 +410,14 @@ export class PostsService {
           },
         },
       },
+    });
+
+    await this.notifications.notify({
+      type: notificationType,
+      actorId: userId,
+      recipientId,
+      postId: targetPostId,
+      commentId: comment.id,
     });
 
     return { ...comment, replies: [] };
@@ -461,6 +512,13 @@ export class PostsService {
 
     if (post.kind === PostKind.RETWEET) {
       await this.prisma.post.delete({ where: { id: postId } });
+      if (post.originalPostId) {
+        await this.notifications.retract({
+          type: NotificationType.RETWEET,
+          actorId: userId,
+          postId: post.originalPostId,
+        });
+      }
       return;
     }
 
