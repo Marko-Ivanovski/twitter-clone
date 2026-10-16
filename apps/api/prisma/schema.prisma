@@ -60,6 +60,8 @@ model Post {
 
   @@index([authorId, createdAt])
   @@index([originalPostId])
+  // Migration 20261016150000 adds a partial unique index on (authorId, originalPostId)
+  // WHERE kind = RETWEET. Prisma cannot model it, so keep it out of generated drops.
 }
 
 model Like {

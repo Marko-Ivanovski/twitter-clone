@@ -106,6 +106,38 @@ describe('PostsService', () => {
       });
     });
 
+    it('does not notify a parent author who can no longer view the private post', async () => {
+      prisma.post.findUnique.mockResolvedValue({
+        ...POST,
+        visibility: PostVisibility.PRIVATE,
+      });
+      // The replier follows the post author. The parent author unfollowed.
+      prisma.follow.findUnique.mockImplementation(
+        ({
+          where,
+        }: {
+          where: { followerId_followingId: { followerId: string } };
+        }) =>
+          Promise.resolve(
+            where.followerId_followingId.followerId === 'replier' ? {} : null,
+          ),
+      );
+      prisma.comment.findUnique.mockResolvedValue({
+        id: 'parent',
+        postId: 'post-1',
+        authorId: 'parent-author',
+        parentCommentId: null,
+      });
+
+      await service.addComment('post-1', 'replier', {
+        content: 'reply',
+        parentCommentId: 'parent',
+      });
+
+      expect(prisma.comment.create).toHaveBeenCalled();
+      expect(notifications.notify).not.toHaveBeenCalled();
+    });
+
     it('rejects replying to a reply', async () => {
       prisma.comment.findUnique.mockResolvedValue({
         id: 'reply',
@@ -213,6 +245,15 @@ describe('PostsService', () => {
     it('does not notify again when the retweet already existed', async () => {
       prisma.post.findFirst.mockResolvedValue({ id: 'existing-retweet' });
       await service.retweetPost('post-1', 'fan');
+      expect(notifications.notify).not.toHaveBeenCalled();
+    });
+
+    it('does not notify twice when a concurrent retweet already won the insert', async () => {
+      prisma.post.create.mockRejectedValue(uniqueViolation());
+
+      const result = await service.retweetPost('post-1', 'fan');
+
+      expect(result.retweetedByMe).toBe(true);
       expect(notifications.notify).not.toHaveBeenCalled();
     });
 

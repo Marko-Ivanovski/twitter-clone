@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { ApiError } from '@/lib/api';
 import { fetchCurrentUser } from '@/lib/auth';
 import {
   getNotifications,
@@ -35,7 +36,7 @@ const emptyState = (userId: string | null): NotificationsState => ({
 });
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const userId = user?.id ?? null;
   const [state, setState] = useState<NotificationsState>(() => emptyState(null));
 
@@ -57,23 +58,31 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     let source: EventSource | null = null;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let retryDelay = 1000;
+    let hasOpened = false;
 
-    getUnreadCount()
-      .then(({ count }) => {
-        if (!closed) update(userId, (base) => ({ ...base, unreadCount: count }));
-      })
-      .catch(() => undefined);
+    const loadSnapshot = () => {
+      getUnreadCount()
+        .then(({ count }) => {
+          if (!closed) update(userId, (base) => ({ ...base, unreadCount: count }));
+        })
+        .catch(() => undefined);
 
-    getNotifications(LATEST_LIMIT, 0)
-      .then(({ items }) => {
-        if (!closed) update(userId, (base) => ({ ...base, latest: items }));
-      })
-      .catch(() => undefined);
+      getNotifications(LATEST_LIMIT, 0)
+        .then(({ items }) => {
+          if (!closed) update(userId, (base) => ({ ...base, latest: items }));
+        })
+        .catch(() => undefined);
+    };
+
+    loadSnapshot();
 
     const connect = () => {
       source = openNotificationsStream();
       source.addEventListener('open', () => {
         retryDelay = 1000;
+        // Anything published while disconnected never reached this tab.
+        if (hasOpened) loadSnapshot();
+        hasOpened = true;
       });
       source.addEventListener('notification', (event) => {
         const item = JSON.parse((event as MessageEvent<string>).data) as NotificationItem;
@@ -88,11 +97,20 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         if (closed) return;
         // EventSource cannot see a 401, so an authed request runs first to
         // let apiFetch refresh an expired access token before reconnecting.
+        // A 401 here means the refresh token is gone too, so the session ended:
+        // sign out instead of retrying forever. Other errors mean the API is
+        // unreachable, which is worth retrying with backoff.
         retryTimer = setTimeout(() => {
           fetchCurrentUser()
-            .catch(() => undefined)
-            .finally(() => {
-              if (!closed) connect();
+            .then((me) => {
+              if (closed) return;
+              if (me.id === userId) connect();
+              else void refreshUser();
+            })
+            .catch((err: unknown) => {
+              if (closed) return;
+              if (err instanceof ApiError && err.status === 401) void refreshUser();
+              else connect();
             });
         }, retryDelay);
         retryDelay = Math.min(retryDelay * 2, MAX_RETRY_MS);
@@ -106,7 +124,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       source?.close();
       clearTimeout(retryTimer);
     };
-  }, [userId, update]);
+  }, [userId, update, refreshUser]);
 
   const markAllRead = useCallback(async () => {
     if (!userId) return;

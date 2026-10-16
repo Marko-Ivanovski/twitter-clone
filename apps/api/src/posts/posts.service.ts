@@ -243,15 +243,28 @@ export class PostsService {
       },
     });
 
+    let created = false;
     if (!existing) {
-      await this.prisma.post.create({
-        data: {
-          authorId: userId,
-          kind: PostKind.RETWEET,
-          originalPostId,
-          visibility: PostVisibility.PUBLIC,
-        },
-      });
+      // A concurrent retweet can pass the check above, and the partial unique
+      // index on (authorId, originalPostId) for retweets rejects the second.
+      try {
+        await this.prisma.post.create({
+          data: {
+            authorId: userId,
+            kind: PostKind.RETWEET,
+            originalPostId,
+            visibility: PostVisibility.PUBLIC,
+          },
+        });
+        created = true;
+      } catch (error) {
+        if (!isUniqueViolation(error)) {
+          throw error;
+        }
+      }
+    }
+
+    if (created) {
       await this.notifications.notify({
         type: NotificationType.RETWEET,
         actorId: userId,
@@ -412,13 +425,16 @@ export class PostsService {
       },
     });
 
-    await this.notifications.notify({
-      type: notificationType,
-      actorId: userId,
-      recipientId,
-      postId: targetPostId,
-      commentId: comment.id,
-    });
+    // A reply's text must not reach a parent author who lost access to the post.
+    if (await this.canViewPost(targetPost, recipientId)) {
+      await this.notifications.notify({
+        type: notificationType,
+        actorId: userId,
+        recipientId,
+        postId: targetPostId,
+        commentId: comment.id,
+      });
+    }
 
     return { ...comment, replies: [] };
   }
