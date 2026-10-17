@@ -15,10 +15,10 @@ import { memoryStorage } from 'multer';
 import path from 'path';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { detectImageExtension } from './image-signature';
+import { UPLOAD_ROOT } from './upload-files';
 import { getUploadsBaseUrl, isUploadFolder } from './upload-url';
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
-const UPLOAD_ROOT = path.join(process.cwd(), 'uploads');
 
 @Controller('uploads')
 export class UploadsController {

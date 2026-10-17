@@ -11,7 +11,17 @@ import {
 } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { deleteUploadedFile } from '../uploads/upload-files';
 import { PostsService } from './posts.service';
+
+jest.mock('../uploads/upload-files', () => ({
+  deleteUploadedFile: jest.fn().mockResolvedValue(undefined),
+}));
+
+const OLD_IMAGE =
+  'http://localhost:3001/api/uploads/tweets/11111111-1111-4111-8111-111111111111.png';
+const NEW_IMAGE =
+  'http://localhost:3001/api/uploads/tweets/22222222-2222-4222-8222-222222222222.png';
 
 const POST = {
   id: 'post-1',
@@ -32,6 +42,8 @@ const makePrisma = () => ({
   post: {
     findUnique: jest.fn().mockResolvedValue(POST),
     findFirst: jest.fn().mockResolvedValue(null),
+    findMany: jest.fn().mockResolvedValue([]),
+    update: jest.fn(),
     create: jest.fn().mockResolvedValue({ id: 'retweet-1' }),
     count: jest.fn().mockResolvedValue(1),
     delete: jest.fn().mockResolvedValue({}),
@@ -41,6 +53,7 @@ const makePrisma = () => ({
     create: jest.fn().mockResolvedValue({}),
     delete: jest.fn().mockResolvedValue({}),
     count: jest.fn().mockResolvedValue(1),
+    findMany: jest.fn().mockResolvedValue([]),
   },
   comment: {
     findUnique: jest.fn(),
@@ -336,6 +349,52 @@ describe('PostsService', () => {
     it('still lets the owner retweet their own post', async () => {
       await service.retweetPost('post-1', 'post-author');
       expect(prisma.post.create).toHaveBeenCalled();
+    });
+  });
+
+  describe('uploaded image files', () => {
+    const ORIGINAL = {
+      ...POST,
+      content: 'with image',
+      imageUrl: OLD_IMAGE,
+    };
+    const asUpdated = (imageUrl: string | null) => ({
+      ...ORIGINAL,
+      imageUrl,
+      createdAt: new Date(),
+      author: { username: 'author', displayName: null, avatarUrl: null },
+      comments: [],
+      _count: { likes: 0, comments: 0, retweets: 0 },
+    });
+
+    beforeEach(() => {
+      (deleteUploadedFile as jest.Mock).mockClear();
+      prisma.post.findUnique.mockResolvedValue(ORIGINAL);
+    });
+
+    it('deletes the old file when an edit replaces the image', async () => {
+      prisma.post.update.mockResolvedValue(asUpdated(NEW_IMAGE));
+      await service.updatePost('post-1', 'post-author', {
+        imageUrl: NEW_IMAGE,
+      });
+      expect(deleteUploadedFile).toHaveBeenCalledWith(OLD_IMAGE);
+    });
+
+    it('deletes the file when an edit removes the image', async () => {
+      prisma.post.update.mockResolvedValue(asUpdated(null));
+      await service.updatePost('post-1', 'post-author', { imageUrl: null });
+      expect(deleteUploadedFile).toHaveBeenCalledWith(OLD_IMAGE);
+    });
+
+    it('keeps the file when the edit leaves the image alone', async () => {
+      prisma.post.update.mockResolvedValue(asUpdated(OLD_IMAGE));
+      await service.updatePost('post-1', 'post-author', { content: 'edited' });
+      expect(deleteUploadedFile).not.toHaveBeenCalled();
+    });
+
+    it('deletes the file together with the post', async () => {
+      await service.deletePost('post-1', 'post-author');
+      expect(deleteUploadedFile).toHaveBeenCalledWith(OLD_IMAGE);
     });
   });
 });

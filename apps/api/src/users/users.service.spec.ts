@@ -2,7 +2,17 @@ import { ForbiddenException } from '@nestjs/common';
 import { PostVisibility } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { FollowsService } from './follows.service';
+import { deleteUploadedFile } from '../uploads/upload-files';
 import { UsersService } from './users.service';
+
+jest.mock('../uploads/upload-files', () => ({
+  deleteUploadedFile: jest.fn().mockResolvedValue(undefined),
+}));
+
+const OLD_AVATAR =
+  'http://localhost:3001/api/uploads/avatars/11111111-1111-4111-8111-111111111111.png';
+const NEW_AVATAR =
+  'http://localhost:3001/api/uploads/avatars/22222222-2222-4222-8222-222222222222.png';
 
 const PROFILE = {
   id: 'bob',
@@ -122,6 +132,35 @@ describe('UsersService', () => {
       );
       expect(follows.acceptAllPendingIn).not.toHaveBeenCalled();
       expect(follows.notifyAccepted).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('avatar files', () => {
+    beforeEach(() => {
+      (deleteUploadedFile as jest.Mock).mockClear();
+      prisma.user.findUnique.mockResolvedValue({
+        ...PROFILE,
+        isPrivate: false,
+        avatarUrl: OLD_AVATAR,
+      });
+    });
+
+    it.each([
+      ['replaced', NEW_AVATAR],
+      ['removed', null],
+    ])('deletes the old avatar file when it is %s', async (_how, avatarUrl) => {
+      prisma.user.update.mockResolvedValue({ ...PROFILE, avatarUrl });
+      await service.updateUser('bob', { avatarUrl });
+      expect(deleteUploadedFile).toHaveBeenCalledWith(OLD_AVATAR);
+    });
+
+    it('keeps the avatar file when the update does not touch it', async () => {
+      prisma.user.update.mockResolvedValue({
+        ...PROFILE,
+        avatarUrl: OLD_AVATAR,
+      });
+      await service.updateUser('bob', { bio: 'new bio' });
+      expect(deleteUploadedFile).not.toHaveBeenCalled();
     });
   });
 });
