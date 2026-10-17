@@ -1,21 +1,24 @@
 ﻿# Twitter Clone Web (Next.js)
 
-Frontend for the Twitter Clone app, built with Next.js App Router and Tailwind CSS.
+Frontend for the Twitter Clone app, built with the Next.js App Router and Tailwind CSS.
 
 Local URL: `http://localhost:3000`
 
 ## Routes
 
-- `/` - feed (all or following)
+- `/` - feed (all posts or following)
+- `/post/[postId]` - a single post with all of its comments
+- `/user/[username]` - profile, or a locked header for private accounts you don't follow
+- `/notifications` - full notifications inbox
 - `/login` - sign in
 - `/register` - sign up
-- `/user/[username]` - public profile
-- `/settings/profile` - edit profile and change password
+- `/settings/profile` - profile, private account toggle, email and password
 
 ## Implementation Notes
 
-- API calls live in `src/lib/*` and send cookies (`credentials: 'include'`).
-- The API base URL comes from `NEXT_PUBLIC_API_BASE_URL`.
-- Auth state and theme state are managed in `src/context`.
-- Post interactions and infinite scroll logic live in `src/components/users/PostList.tsx`.
-- Uploads are handled via `/api/uploads?folder=avatars|tweets`, which returns a URL stored with posts/users.
+- API calls live in `src/lib/*` and send cookies (`credentials: 'include'`). On a 401, `apiFetch` refreshes the session once and retries.
+- The API base URL comes from `NEXT_PUBLIC_API_BASE_URL`, which is baked in at build time.
+- `src/context/NotificationsContext.tsx` holds the unread count and newest notifications. It keeps an `EventSource` open to the API's stream and reconnects through the refresh flow when the stream ends.
+- `src/proxy.ts` sends visitors without a session away from `/settings` before the page loads. Real access checks happen in the API.
+- Post interactions and infinite scroll live in `src/components/users/PostList.tsx`.
+- Uploads go to `/api/uploads?folder=avatars|tweets`, which returns the URL stored on the post or user.
