@@ -150,10 +150,6 @@ docker-compose.yml     db, migrate, api and web services
 
 The [API README](apps/api/README.md) lists every endpoint, and the [web README](apps/web/README.md) covers routes and frontend notes.
 
-## Media
-
-The `/media` folder has a walkthrough video and database screenshots from an earlier version of the app, before notifications and private accounts were added.
-
 ## Possible Next Steps
 
 - Direct messages on top of the existing real-time stream
