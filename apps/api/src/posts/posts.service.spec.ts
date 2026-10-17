@@ -313,6 +313,26 @@ describe('PostsService', () => {
       expect(prisma.post.create).not.toHaveBeenCalled();
     });
 
+    it('hides a private account’s retweet of a public post from non-followers', async () => {
+      prisma.post.findUnique.mockResolvedValue({
+        id: 'retweet-1',
+        authorId: 'private-retweeter',
+        kind: PostKind.RETWEET,
+        visibility: PostVisibility.PUBLIC,
+        originalPostId: 'post-1',
+        originalPost: { ...POST, authorId: 'public-author' },
+      });
+      prisma.user.findUnique.mockImplementation(
+        ({ where }: { where: { id: string } }) =>
+          Promise.resolve({ isPrivate: where.id === 'private-retweeter' }),
+      );
+      prisma.follow.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.getPostById('retweet-1', 'stranger'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
     it('still lets the owner retweet their own post', async () => {
       await service.retweetPost('post-1', 'post-author');
       expect(prisma.post.create).toHaveBeenCalled();

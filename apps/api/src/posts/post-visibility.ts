@@ -35,8 +35,25 @@ function readableBy(
   };
 }
 
+// A private account's activity, its retweets included, is for followers only.
+function retweeterReadableBy(
+  viewerId: string | undefined,
+  followingIds: string[],
+): Prisma.PostWhereInput {
+  if (!viewerId) {
+    return { author: { isPrivate: false } };
+  }
+
+  return {
+    OR: [
+      { author: { isPrivate: false } },
+      { authorId: { in: [viewerId, ...followingIds] } },
+    ],
+  };
+}
+
 // Retweet rows are always PUBLIC, so their reach is bounded by the original
-// post's visibility. Otherwise a private post leaks through anyone's retweet.
+// post's visibility and by the retweeter's account privacy.
 export function visiblePostsWhere(
   viewerId: string | undefined,
   followingIds: string[],
@@ -46,7 +63,11 @@ export function visiblePostsWhere(
   return {
     OR: [
       { kind: PostKind.ORIGINAL, ...readable },
-      { kind: PostKind.RETWEET, originalPost: { is: readable } },
+      {
+        kind: PostKind.RETWEET,
+        originalPost: { is: readable },
+        ...retweeterReadableBy(viewerId, followingIds),
+      },
     ],
   };
 }

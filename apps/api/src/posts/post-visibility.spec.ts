@@ -14,6 +14,7 @@ describe('visiblePostsWhere', () => {
         {
           kind: PostKind.RETWEET,
           originalPost: { is: PUBLIC_OF_PUBLIC_ACCOUNT },
+          author: { isPrivate: false },
         },
       ],
     });
@@ -30,7 +31,14 @@ describe('visiblePostsWhere', () => {
     expect(visiblePostsWhere('viewer', ['friend'])).toEqual({
       OR: [
         { kind: PostKind.ORIGINAL, ...readable },
-        { kind: PostKind.RETWEET, originalPost: { is: readable } },
+        {
+          kind: PostKind.RETWEET,
+          originalPost: { is: readable },
+          OR: [
+            { author: { isPrivate: false } },
+            { authorId: { in: ['viewer', 'friend'] } },
+          ],
+        },
       ],
     });
   });

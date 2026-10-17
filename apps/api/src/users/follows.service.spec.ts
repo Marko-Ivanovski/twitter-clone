@@ -192,22 +192,47 @@ describe('FollowsService', () => {
     });
   });
 
-  it('accepts every pending request and only those', async () => {
-    prisma.followRequest.findMany.mockResolvedValue([
-      { requesterId: 'ana' },
-      { requesterId: 'carl' },
-    ]);
+  it('accepts every pending request inside the caller’s transaction', async () => {
+    const tx = {
+      followRequest: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ requesterId: 'ana' }, { requesterId: 'carl' }]),
+        deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
+      },
+      follow: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    };
 
-    await service.acceptAllPending('bob');
+    const accepted = await service.acceptAllPendingIn(
+      tx as unknown as Prisma.TransactionClient,
+      'bob',
+    );
 
-    expect(prisma.followRequest.deleteMany).toHaveBeenCalledWith({
+    expect(accepted).toEqual(['ana', 'carl']);
+    expect(tx.follow.createMany).toHaveBeenCalledWith({
+      data: [
+        { followerId: 'ana', followingId: 'bob' },
+        { followerId: 'carl', followingId: 'bob' },
+      ],
+      skipDuplicates: true,
+    });
+    expect(tx.followRequest.deleteMany).toHaveBeenCalledWith({
       where: { targetId: 'bob', requesterId: { in: ['ana', 'carl'] } },
     });
-    expect(prisma.follow.create).toHaveBeenCalledTimes(2);
+    expect(notifications.notify).not.toHaveBeenCalled();
+  });
+
+  it('notifies accepted requesters after the transaction', async () => {
+    await service.notifyAccepted('bob', ['ana', 'carl']);
+    expect(notifications.retract).toHaveBeenCalledWith({
+      type: NotificationType.FOLLOW_REQUEST,
+      actorId: 'carl',
+      recipientId: 'bob',
+    });
     expect(notifications.notify).toHaveBeenCalledWith({
       type: NotificationType.FOLLOW_ACCEPTED,
       actorId: 'bob',
-      recipientId: 'carl',
+      recipientId: 'ana',
     });
   });
 

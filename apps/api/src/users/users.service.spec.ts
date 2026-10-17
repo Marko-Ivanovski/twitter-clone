@@ -17,6 +17,7 @@ const PROFILE = {
 };
 
 const makePrisma = () => ({
+  $transaction: jest.fn(),
   user: {
     findUnique: jest.fn().mockResolvedValue(PROFILE),
     update: jest.fn(),
@@ -30,14 +31,22 @@ const makePrisma = () => ({
 
 describe('UsersService', () => {
   let prisma: ReturnType<typeof makePrisma>;
-  let follows: { getStatus: jest.Mock; acceptAllPending: jest.Mock };
+  let follows: {
+    getStatus: jest.Mock;
+    acceptAllPendingIn: jest.Mock;
+    notifyAccepted: jest.Mock;
+  };
   let service: UsersService;
 
   beforeEach(() => {
     prisma = makePrisma();
+    prisma.$transaction.mockImplementation(
+      (run: (tx: typeof prisma) => Promise<unknown>) => run(prisma),
+    );
     follows = {
       getStatus: jest.fn().mockResolvedValue('none'),
-      acceptAllPending: jest.fn().mockResolvedValue(undefined),
+      acceptAllPendingIn: jest.fn().mockResolvedValue(['ana']),
+      notifyAccepted: jest.fn().mockResolvedValue(undefined),
     };
     service = new UsersService(
       prisma as unknown as PrismaService,
@@ -92,7 +101,9 @@ describe('UsersService', () => {
 
       await service.updateUser('bob', { isPrivate: false });
 
-      expect(follows.acceptAllPending).toHaveBeenCalledWith('bob');
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(follows.acceptAllPendingIn).toHaveBeenCalledWith(prisma, 'bob');
+      expect(follows.notifyAccepted).toHaveBeenCalledWith('bob', ['ana']);
     });
 
     it('keeps pending requests when switching to private', async () => {
@@ -109,7 +120,8 @@ describe('UsersService', () => {
           data: expect.objectContaining({ isPrivate: true }) as object,
         }),
       );
-      expect(follows.acceptAllPending).not.toHaveBeenCalled();
+      expect(follows.acceptAllPendingIn).not.toHaveBeenCalled();
+      expect(follows.notifyAccepted).not.toHaveBeenCalled();
     });
   });
 });

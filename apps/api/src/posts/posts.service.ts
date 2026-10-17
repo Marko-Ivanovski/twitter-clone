@@ -124,7 +124,9 @@ export class PostsService {
       throw new NotFoundException('Post not found');
     }
 
-    const canView = await this.canViewPost(target, viewerId);
+    const canView =
+      (await this.canViewPost(target, viewerId)) &&
+      (target === post || (await this.canViewPost(post, viewerId)));
     if (!canView) {
       throw new ForbiddenException('Post is private');
     }

@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { NotificationType } from '@prisma/client';
+import { NotificationType, Prisma } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { isUniqueViolation } from '../prisma/prisma-errors';
 import { PrismaService } from '../prisma/prisma.service';
@@ -126,19 +126,35 @@ export class FollowsService {
     });
   }
 
-  async acceptAllPending(targetId: string) {
-    const pending = await this.prisma.followRequest.findMany({
+  // Runs inside the caller's transaction so the privacy switch, the new
+  // follows and the removed requests commit or roll back together.
+  async acceptAllPendingIn(
+    tx: Prisma.TransactionClient,
+    targetId: string,
+  ): Promise<string[]> {
+    const pending = await tx.followRequest.findMany({
       where: { targetId },
       select: { requesterId: true },
     });
-    if (pending.length === 0) return;
+    if (pending.length === 0) return [];
 
     const requesterIds = pending.map((request) => request.requesterId);
-    await this.prisma.followRequest.deleteMany({
+    await tx.follow.createMany({
+      data: requesterIds.map((requesterId) => ({
+        followerId: requesterId,
+        followingId: targetId,
+      })),
+      skipDuplicates: true,
+    });
+    await tx.followRequest.deleteMany({
       where: { targetId, requesterId: { in: requesterIds } },
     });
+    return requesterIds;
+  }
+
+  async notifyAccepted(targetId: string, requesterIds: string[]) {
     for (const requesterId of requesterIds) {
-      await this.completeAcceptance(requesterId, targetId);
+      await this.sendAcceptedNotifications(requesterId, targetId);
     }
   }
 
@@ -183,7 +199,6 @@ export class FollowsService {
     }
   }
 
-  // Idempotent so auto-accept can be retried after a partial failure.
   private async completeAcceptance(requesterId: string, targetId: string) {
     try {
       await this.prisma.follow.create({
@@ -193,6 +208,13 @@ export class FollowsService {
       if (!isUniqueViolation(error)) throw error;
     }
 
+    await this.sendAcceptedNotifications(requesterId, targetId);
+  }
+
+  private async sendAcceptedNotifications(
+    requesterId: string,
+    targetId: string,
+  ) {
     await this.notifications.retract({
       type: NotificationType.FOLLOW_REQUEST,
       actorId: requesterId,

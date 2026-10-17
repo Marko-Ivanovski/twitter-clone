@@ -123,8 +123,16 @@ export class UsersService {
     }
 
     let user: User;
+    let acceptedIds: string[];
     try {
-      user = await this.prisma.user.update({ where: { id }, data });
+      ({ user, acceptedIds } = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.user.update({ where: { id }, data });
+        const accepted =
+          currentUser.isPrivate && !updated.isPrivate
+            ? await this.follows.acceptAllPendingIn(tx, id)
+            : [];
+        return { user: updated, acceptedIds: accepted };
+      }));
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException('Email already in use');
@@ -132,8 +140,8 @@ export class UsersService {
       throw error;
     }
 
-    if (currentUser.isPrivate && !user.isPrivate) {
-      await this.follows.acceptAllPending(id);
+    if (acceptedIds.length > 0) {
+      await this.follows.notifyAccepted(id, acceptedIds);
     }
 
     return { user, passwordChanged };
