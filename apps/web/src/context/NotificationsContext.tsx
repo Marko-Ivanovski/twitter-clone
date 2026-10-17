@@ -24,7 +24,7 @@ interface NotificationsState {
 interface NotificationsContextValue {
   unreadCount: number;
   latest: NotificationItem[];
-  markAllRead: () => Promise<void>;
+  markAllRead: (upTo?: string) => Promise<void>;
 }
 
 const NotificationsContext = createContext<NotificationsContextValue | undefined>(undefined);
@@ -67,7 +67,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         })
         .catch(() => undefined);
 
-      getNotifications(LATEST_LIMIT, 0)
+      getNotifications(LATEST_LIMIT)
         .then(({ items }) => {
           if (!closed) update(userId, (base) => ({ ...base, latest: items }));
         })
@@ -86,11 +86,14 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       });
       source.addEventListener('notification', (event) => {
         const item = JSON.parse((event as MessageEvent<string>).data) as NotificationItem;
-        update(userId, (base) => ({
-          ...base,
-          unreadCount: base.unreadCount + 1,
-          latest: [item, ...base.latest.filter((n) => n.id !== item.id)].slice(0, LATEST_LIMIT),
-        }));
+        update(userId, (base) => {
+          const isNew = !base.latest.some((n) => n.id === item.id);
+          return {
+            ...base,
+            unreadCount: base.unreadCount + (isNew ? 1 : 0),
+            latest: [item, ...base.latest.filter((n) => n.id !== item.id)].slice(0, LATEST_LIMIT),
+          };
+        });
       });
       source.onerror = () => {
         source?.close();
@@ -126,19 +129,25 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     };
   }, [userId, update, refreshUser]);
 
-  const markAllRead = useCallback(async () => {
-    if (!userId) return;
-    update(userId, (base) => ({
-      ...base,
-      unreadCount: 0,
-      latest: base.latest.map((n) => ({ ...n, read: true })),
-    }));
-    try {
-      await markAllNotificationsRead();
-    } catch {
-      // The badge reappears on the next unread-count load if this failed.
-    }
-  }, [userId, update]);
+  const markAllRead = useCallback(
+    async (upTo?: string) => {
+      if (!userId) return;
+      update(userId, (base) => ({
+        ...base,
+        unreadCount: 0,
+        latest: base.latest.map((n) => (!upTo || n.createdAt <= upTo ? { ...n, read: true } : n)),
+      }));
+      try {
+        await markAllNotificationsRead(upTo);
+        // Anything newer than the cutoff is still unread on the server.
+        const { count } = await getUnreadCount();
+        update(userId, (base) => ({ ...base, unreadCount: count }));
+      } catch {
+        // The badge reappears on the next unread-count load if this failed.
+      }
+    },
+    [userId, update],
+  );
 
   return (
     <NotificationsContext.Provider

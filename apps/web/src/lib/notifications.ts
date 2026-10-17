@@ -26,20 +26,25 @@ export interface NotificationItem {
 
 export interface NotificationsResponse {
   items: NotificationItem[];
-  total: number;
-  limit: number;
-  offset: number;
   hasMore: boolean;
+  nextCursor: string | null;
 }
 
-export const getNotifications = (limit = 20, offset = 0) =>
-  apiFetch<NotificationsResponse>(`/api/notifications?limit=${limit}&offset=${offset}`);
+export const getNotifications = (limit = 20, cursor?: string | null) => {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set('cursor', cursor);
+  return apiFetch<NotificationsResponse>(`/api/notifications?${params.toString()}`);
+};
 
 export const getUnreadCount = () =>
   apiFetch<{ count: number }>('/api/notifications/unread-count');
 
-export const markAllNotificationsRead = () =>
-  apiFetch<void>('/api/notifications/read', { method: 'POST' });
+// upTo limits the update to what the user has actually seen.
+export const markAllNotificationsRead = (upTo?: string) =>
+  apiFetch<void>('/api/notifications/read', {
+    method: 'POST',
+    body: JSON.stringify(upTo ? { upTo } : {}),
+  });
 
 export const openNotificationsStream = () =>
   new EventSource(`${API_BASE_URL}/api/notifications/stream`, { withCredentials: true });

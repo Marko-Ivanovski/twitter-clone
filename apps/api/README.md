@@ -46,9 +46,9 @@ Uploads:
 - Files are served from `/api/uploads/<folder>/<filename>`. Only JPG, PNG, WEBP, and GIF up to 5MB are accepted, detected from the file contents.
 
 Notifications (all require auth):
-- GET `/api/notifications?limit=20&offset=0` - Paginated notifications, newest first.
+- GET `/api/notifications?limit=20&cursor=...` - Notifications newest first. Pass the previous page's `nextCursor` to get the next page.
 - GET `/api/notifications/unread-count` - `{ count }` of unread notifications.
-- POST `/api/notifications/read` - Mark all notifications as read.
+- POST `/api/notifications/read` - Mark notifications as read. An optional `{ upTo }` timestamp limits it to notifications the user has seen.
 - GET `/api/notifications/stream` - Server-Sent Events. Emits `notification` events as they happen and a `ping` every 25 seconds.
 
 Request notes:

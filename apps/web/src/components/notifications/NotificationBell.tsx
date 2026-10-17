@@ -40,7 +40,7 @@ export function NotificationBell() {
     // Items unread at the moment of opening stay highlighted while it is open.
     setHighlightIds(new Set(latest.filter((n) => !n.read).map((n) => n.id)));
     setOpen(true);
-    if (unreadCount > 0) void markAllRead();
+    if (unreadCount > 0) void markAllRead(latest[0]?.createdAt);
   };
 
   const badge = unreadCount > 9 ? '9+' : String(unreadCount);
@@ -63,7 +63,7 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 z-30 mt-2 w-80 overflow-hidden rounded-lg border border-gray-100 bg-white shadow-lg ring-1 ring-black/5 dark:border-slate-800 dark:bg-slate-900">
+        <div className="absolute right-0 z-30 mt-2 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-gray-100 bg-white shadow-lg ring-1 ring-black/5 dark:border-slate-800 dark:bg-slate-900">
           <div className="border-b border-gray-100 px-4 py-2 text-sm font-semibold text-gray-900 dark:border-slate-800 dark:text-slate-100">
             Notifications
           </div>

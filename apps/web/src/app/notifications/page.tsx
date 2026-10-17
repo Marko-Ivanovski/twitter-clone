@@ -15,28 +15,35 @@ function NotificationsList() {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const offsetRef = useRef(0);
+  const cursorRef = useRef<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const loadPage = useCallback(async () => {
     setLoading(true);
     try {
-      const page = await getNotifications(PAGE_SIZE, offsetRef.current);
-      offsetRef.current += page.items.length;
-      setItems((prev) => [...prev, ...page.items]);
+      const page = await getNotifications(PAGE_SIZE, cursorRef.current);
+      cursorRef.current = page.nextCursor;
+      setItems((prev) => {
+        const seen = new Set(prev.map((n) => n.id));
+        return [...prev, ...page.items.filter((n) => !seen.has(n.id))];
+      });
       setHasMore(page.hasMore);
       setError(null);
+      return page.items;
     } catch {
       setError('Failed to load notifications');
+      return [];
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    // The first page keeps its unread flags for highlighting, then
-    // everything is marked read on the server.
-    loadPage().then(() => markAllRead());
+    // The first page keeps its unread flags for highlighting. Only what it
+    // showed is marked read, so later arrivals still count as unread.
+    loadPage().then((firstPage) => {
+      if (firstPage.length > 0) void markAllRead(firstPage[0].createdAt);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
