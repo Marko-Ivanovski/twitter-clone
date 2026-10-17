@@ -60,7 +60,10 @@ const makePrisma = () => ({
     create: jest.fn().mockResolvedValue({ id: 'new-comment' }),
     delete: jest.fn().mockResolvedValue({}),
   },
-  user: { findUnique: jest.fn().mockResolvedValue({ isPrivate: false }) },
+  user: {
+    findUnique: jest.fn().mockResolvedValue({ isPrivate: false }),
+    count: jest.fn().mockResolvedValue(0),
+  },
   follow: { findUnique: jest.fn() },
 });
 
@@ -370,6 +373,13 @@ describe('PostsService', () => {
     beforeEach(() => {
       (deleteUploadedFile as jest.Mock).mockClear();
       prisma.post.findUnique.mockResolvedValue(ORIGINAL);
+      prisma.post.count.mockResolvedValue(0);
+    });
+
+    it('keeps a file another post still uses', async () => {
+      prisma.post.count.mockResolvedValue(1);
+      await service.deletePost('post-1', 'post-author');
+      expect(deleteUploadedFile).not.toHaveBeenCalled();
     });
 
     it('deletes the old file when an edit replaces the image', async () => {

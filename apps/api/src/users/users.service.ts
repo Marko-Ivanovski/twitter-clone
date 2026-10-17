@@ -11,7 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { isUniqueViolation } from '../prisma/prisma-errors';
 import { mapPostsForViewer, postInclude } from '../posts/post.mapper';
 import { buildVisiblePostsWhere } from '../posts/post-visibility';
-import { deleteUploadedFile } from '../uploads/upload-files';
+import { deleteUploadIfUnreferenced } from '../uploads/upload-references';
 import { isOwnUploadUrl } from '../uploads/upload-url';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { FollowsService } from './follows.service';
@@ -142,7 +142,7 @@ export class UsersService {
     }
 
     if (currentUser.avatarUrl && user.avatarUrl !== currentUser.avatarUrl) {
-      await deleteUploadedFile(currentUser.avatarUrl);
+      await deleteUploadIfUnreferenced(this.prisma, currentUser.avatarUrl);
     }
 
     if (acceptedIds.length > 0) {

@@ -31,6 +31,7 @@ const makePrisma = () => ({
   user: {
     findUnique: jest.fn().mockResolvedValue(PROFILE),
     update: jest.fn(),
+    count: jest.fn().mockResolvedValue(0),
   },
   follow: { findMany: jest.fn().mockResolvedValue([]) },
   post: {
@@ -143,6 +144,14 @@ describe('UsersService', () => {
         isPrivate: false,
         avatarUrl: OLD_AVATAR,
       });
+      prisma.post.count.mockResolvedValue(0);
+    });
+
+    it('keeps an avatar file someone else still uses', async () => {
+      prisma.user.count.mockResolvedValue(1);
+      prisma.user.update.mockResolvedValue({ ...PROFILE, avatarUrl: null });
+      await service.updateUser('bob', { avatarUrl: null });
+      expect(deleteUploadedFile).not.toHaveBeenCalled();
     });
 
     it.each([

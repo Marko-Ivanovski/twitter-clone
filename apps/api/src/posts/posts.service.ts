@@ -18,7 +18,7 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { isRecordNotFound, isUniqueViolation } from '../prisma/prisma-errors';
-import { deleteUploadedFile } from '../uploads/upload-files';
+import { deleteUploadIfUnreferenced } from '../uploads/upload-references';
 import { isOwnUploadUrl } from '../uploads/upload-url';
 import { mapPostsForViewer, postInclude } from './post.mapper';
 import {
@@ -528,7 +528,7 @@ export class PostsService {
     });
 
     if (post.imageUrl && updated.imageUrl !== post.imageUrl) {
-      await deleteUploadedFile(post.imageUrl);
+      await deleteUploadIfUnreferenced(this.prisma, post.imageUrl);
     }
 
     const [mapped] = await mapPostsForViewer(this.prisma, [updated], userId);
@@ -565,7 +565,7 @@ export class PostsService {
     });
 
     await this.prisma.post.delete({ where: { id: postId } });
-    await deleteUploadedFile(post.imageUrl);
+    await deleteUploadIfUnreferenced(this.prisma, post.imageUrl);
   }
 
   private async resolveTargetPost(postId: string, viewerId?: string) {
