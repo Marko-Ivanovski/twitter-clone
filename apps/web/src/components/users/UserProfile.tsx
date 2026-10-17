@@ -14,7 +14,7 @@ import { buildAvatarUrl, setAvatarFallback } from '@/utils/avatar';
 
 interface UserProfileProps {
   user: UserProfileType;
-  onFollowStatusChange?: (status: FollowStatus) => void;
+  onFollowChanged: () => Promise<void>;
 }
 
 const BUTTON_LABEL: Record<FollowStatus, string> = {
@@ -23,9 +23,8 @@ const BUTTON_LABEL: Record<FollowStatus, string> = {
   following: 'Following',
 };
 
-export function UserProfile({ user: initialUser, onFollowStatusChange }: UserProfileProps) {
+export function UserProfile({ user, onFollowChanged }: UserProfileProps) {
   const { user: viewer } = useAuth();
-  const [user, setUser] = useState(initialUser);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canFollow = Boolean(viewer) && viewer?.id !== user.id;
@@ -34,22 +33,17 @@ export function UserProfile({ user: initialUser, onFollowStatusChange }: UserPro
     setLoading(true);
     setError(null);
     try {
-      const wasFollowing = user.followStatus === 'following';
-      const { status } =
-        user.followStatus === 'none'
-          ? await followUser(user.username)
-          : await unfollowUser(user.username);
-      // Only a real follow or unfollow changes the count. Requests do not.
-      const delta = (status === 'following' ? 1 : 0) - (wasFollowing ? 1 : 0);
-      setUser((prev) => ({
-        ...prev,
-        followStatus: status,
-        followersCount: Math.max(0, prev.followersCount + delta),
-      }));
-      onFollowStatusChange?.(status);
+      if (user.followStatus === 'none') {
+        await followUser(user.username);
+      } else {
+        await unfollowUser(user.username);
+      }
     } catch (err) {
       setError(getErrorMessage(err, 'Could not update follow status'));
     } finally {
+      // The server decides counts, button state and post access, even after
+      // a conflict such as "Already following".
+      await onFollowChanged();
       setLoading(false);
     }
   };

@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { PostVisibility } from '@prisma/client';
+import { PostKind, PostVisibility } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { FollowsService } from './follows.service';
 import { deleteUploadedFile } from '../uploads/upload-files';
@@ -81,7 +81,11 @@ describe('UsersService', () => {
         }),
       );
       expect(prisma.post.count).toHaveBeenCalledWith({
-        where: { authorId: 'bob', visibility: PostVisibility.PUBLIC },
+        where: {
+          authorId: 'bob',
+          kind: PostKind.ORIGINAL,
+          visibility: PostVisibility.PUBLIC,
+        },
       });
     });
 

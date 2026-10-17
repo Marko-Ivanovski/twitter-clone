@@ -182,12 +182,41 @@ export class FollowsService {
       throw error;
     }
 
+    // The account may have gone public after it was read above, and its
+    // auto-accept would then have missed this request.
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetId },
+      select: { isPrivate: true },
+    });
+    if (target && !target.isPrivate) {
+      return this.convertRequestToFollow(requesterId, targetId);
+    }
+
     await this.notifications.notify({
       type: NotificationType.FOLLOW_REQUEST,
       actorId: requesterId,
       recipientId: targetId,
     });
     return { status: 'requested' as const };
+  }
+
+  private async convertRequestToFollow(requesterId: string, targetId: string) {
+    await this.prisma.followRequest.deleteMany({
+      where: { requesterId, targetId },
+    });
+    try {
+      await this.prisma.follow.create({
+        data: { followerId: requesterId, followingId: targetId },
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+    }
+    await this.notifications.notify({
+      type: NotificationType.FOLLOW,
+      actorId: requesterId,
+      recipientId: targetId,
+    });
+    return { status: 'following' as const };
   }
 
   private async removeRequest(requesterId: string, targetId: string) {

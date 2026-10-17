@@ -5,7 +5,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { PostVisibility, Prisma, User } from '@prisma/client';
+import { PostKind, PostVisibility, Prisma, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { isUniqueViolation } from '../prisma/prisma-errors';
@@ -182,7 +182,7 @@ export class UsersService {
     const canViewPosts =
       !user.isPrivate || viewerId === user.id || followStatus === 'following';
 
-    // A locked profile still shows a post count, limited to public posts.
+    // A locked profile still shows a post count, limited to public originals.
     const postsWhere: Prisma.PostWhereInput = canViewPosts
       ? {
           AND: [
@@ -190,7 +190,11 @@ export class UsersService {
             await buildVisiblePostsWhere(this.prisma, viewerId),
           ],
         }
-      : { authorId: user.id, visibility: PostVisibility.PUBLIC };
+      : {
+          authorId: user.id,
+          kind: PostKind.ORIGINAL,
+          visibility: PostVisibility.PUBLIC,
+        };
     const postsCount = await this.prisma.post.count({ where: postsWhere });
 
     return {

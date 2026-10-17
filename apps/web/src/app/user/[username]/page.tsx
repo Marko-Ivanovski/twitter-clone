@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Lock } from 'lucide-react';
 import { UserProfile } from '@/components/users/UserProfile';
 import { PostList } from '@/components/users/PostList';
 import { ApiError } from '@/lib/api';
-import { getUserProfile, type FollowStatus, type UserProfile as UserProfileType } from '@/lib/users';
+import { getUserProfile, type UserProfile as UserProfileType } from '@/lib/users';
 
 export default function UserPage() {
   const params = useParams<{ username: string }>();
@@ -34,11 +34,15 @@ export default function UserPage() {
     fetchProfile();
   }, [username]);
 
-  const handleFollowStatusChange = (status: FollowStatus) => {
-    setUser((prev) =>
-      prev ? { ...prev, followStatus: status, canViewPosts: !prev.isPrivate || status === 'following' } : prev,
-    );
-  };
+  // Refreshes in place, without the loading state, so the page doesn't flash.
+  const refreshProfile = useCallback(async () => {
+    if (!username) return;
+    try {
+      setUser(await getUserProfile(username));
+    } catch {
+      // Keep showing the last known profile.
+    }
+  }, [username]);
 
   if (loading) {
     return (
@@ -59,7 +63,7 @@ export default function UserPage() {
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-      <UserProfile user={user} onFollowStatusChange={handleFollowStatusChange} />
+      <UserProfile user={user} onFollowChanged={refreshProfile} />
       <div className="mt-8">
         <h2 className="text-xl font-bold text-gray-900 mb-4 dark:text-slate-100">Posts</h2>
         {user.canViewPosts ? (

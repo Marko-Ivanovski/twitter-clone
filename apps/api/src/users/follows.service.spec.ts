@@ -86,6 +86,28 @@ describe('FollowsService', () => {
       });
     });
 
+    it('turns the request into a follow if the account went public meanwhile', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce({ id: 'bob', isPrivate: true })
+        .mockResolvedValueOnce({ isPrivate: false });
+
+      await expect(service.follow('ana', 'bob')).resolves.toEqual({
+        status: 'following',
+      });
+      expect(prisma.followRequest.deleteMany).toHaveBeenCalledWith({
+        where: { requesterId: 'ana', targetId: 'bob' },
+      });
+      expect(prisma.follow.create).toHaveBeenCalledWith({
+        data: { followerId: 'ana', followingId: 'bob' },
+      });
+      expect(notifications.notify).toHaveBeenCalledTimes(1);
+      expect(notifications.notify).toHaveBeenCalledWith({
+        type: NotificationType.FOLLOW,
+        actorId: 'ana',
+        recipientId: 'bob',
+      });
+    });
+
     it('treats a repeated request as still requested without a second notification', async () => {
       target(true);
       prisma.followRequest.create.mockRejectedValue(uniqueViolation());
