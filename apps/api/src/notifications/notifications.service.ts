@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -48,6 +48,27 @@ const toNotificationItem = (row: NotificationRow): NotificationItem => ({
   commentSnippet: toSnippet(row.comment?.content),
 });
 
+export interface NotificationCursor {
+  createdAt: Date;
+  id: string;
+}
+
+const encodeCursor = (row: { createdAt: Date; id: string }) =>
+  `${row.createdAt.toISOString()}_${row.id}`;
+
+export const parseCursor = (
+  value: string | undefined,
+): NotificationCursor | undefined => {
+  if (!value) return undefined;
+  const separator = value.indexOf('_');
+  const createdAt = new Date(value.slice(0, separator));
+  const id = value.slice(separator + 1);
+  if (separator < 1 || !id || Number.isNaN(createdAt.getTime())) {
+    throw new BadRequestException('Invalid cursor');
+  }
+  return { createdAt, id };
+};
+
 // Notifications are a side effect: failures are logged, never thrown, so a
 // like or follow is never rolled back because its notification failed.
 @Injectable()
@@ -83,6 +104,13 @@ export class NotificationsService {
   }
 
   async retract(input: RetractInput): Promise<void> {
+    // Without either key the filter would match every notification of this
+    // type from the actor.
+    if (!input.postId && !input.recipientId) {
+      this.logger.error(`Refused to retract ${input.type} without a target`);
+      return;
+    }
+
     try {
       await this.prisma.notification.deleteMany({
         where: input.recipientId
@@ -106,25 +134,34 @@ export class NotificationsService {
     }
   }
 
-  async list(userId: string, limit: number, offset: number) {
-    const where = { recipientId: userId };
-    const [total, rows] = await Promise.all([
-      this.prisma.notification.count({ where }),
-      this.prisma.notification.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: limit + 1,
-        skip: offset,
-        include: notificationInclude,
-      }),
-    ]);
+  async list(userId: string, limit: number, cursor?: NotificationCursor) {
+    // Keyset pagination: new notifications arriving at the top cannot shift
+    // later pages the way an offset would.
+    const where: Prisma.NotificationWhereInput = cursor
+      ? {
+          recipientId: userId,
+          OR: [
+            { createdAt: { lt: cursor.createdAt } },
+            { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+          ],
+        }
+      : { recipientId: userId };
+
+    const rows = await this.prisma.notification.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      include: notificationInclude,
+    });
 
     const hasMore = rows.length > limit;
-    const items = (hasMore ? rows.slice(0, limit) : rows).map(
-      toNotificationItem,
-    );
+    const page = hasMore ? rows.slice(0, limit) : rows;
 
-    return { items, total, limit, offset, hasMore };
+    return {
+      items: page.map(toNotificationItem),
+      hasMore,
+      nextCursor: hasMore ? encodeCursor(page[page.length - 1]) : null,
+    };
   }
 
   unreadCount(userId: string): Promise<number> {
@@ -133,9 +170,13 @@ export class NotificationsService {
     });
   }
 
-  async markAllRead(userId: string): Promise<void> {
+  async markAllRead(userId: string, upTo?: Date): Promise<void> {
     await this.prisma.notification.updateMany({
-      where: { recipientId: userId, readAt: null },
+      where: {
+        recipientId: userId,
+        readAt: null,
+        ...(upTo ? { createdAt: { lte: upTo } } : {}),
+      },
       data: { readAt: new Date() },
     });
   }

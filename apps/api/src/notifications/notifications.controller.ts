@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   DefaultValuePipe,
   Get,
@@ -16,7 +17,8 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { interval, map, merge, Observable, takeUntil, timer } from 'rxjs';
 import type { AuthRequest } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { NotificationsService } from './notifications.service';
+import { MarkReadDto } from './dto/mark-read.dto';
+import { NotificationsService, parseCursor } from './notifications.service';
 import { NotificationsStream } from './notifications.stream';
 
 const HEARTBEAT_MS = 25_000;
@@ -33,13 +35,13 @@ export class NotificationsController {
   list(
     @Req() req: AuthRequest,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
-    @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
+    @Query('cursor') cursor?: string,
   ) {
     const safeLimit = limit < 1 || limit > 50 ? 20 : limit;
     return this.notificationsService.list(
       req.user!.sub,
       safeLimit,
-      Math.max(offset, 0),
+      parseCursor(cursor),
     );
   }
 
@@ -52,8 +54,11 @@ export class NotificationsController {
 
   @Post('read')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async markAllRead(@Req() req: AuthRequest) {
-    await this.notificationsService.markAllRead(req.user!.sub);
+  async markAllRead(@Req() req: AuthRequest, @Body() dto: MarkReadDto) {
+    await this.notificationsService.markAllRead(
+      req.user!.sub,
+      dto.upTo ? new Date(dto.upTo) : undefined,
+    );
   }
 
   // The heartbeat keeps proxies from closing an idle connection. The stream

@@ -1,6 +1,7 @@
+import { BadRequestException } from '@nestjs/common';
 import { NotificationType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { NotificationsService } from './notifications.service';
+import { NotificationsService, parseCursor } from './notifications.service';
 import { NotificationsStream } from './notifications.stream';
 
 const ROW = {
@@ -121,17 +122,17 @@ describe('NotificationsService', () => {
   });
 
   it('lists newest first and truncates long snippets', async () => {
-    const page = await service.list('bob', 20, 0);
+    const page = await service.list('bob', 20);
 
     expect(prisma.notification.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { recipientId: 'bob' },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: 21,
-        skip: 0,
       }),
     );
     expect(page.hasMore).toBe(false);
+    expect(page.nextCursor).toBeNull();
     expect(page.items[0].commentSnippet).toHaveLength(80);
     expect(page.items[0].commentSnippet?.endsWith('…')).toBe(true);
     expect(page.items[0].postSnippet).toBe('A post');
@@ -142,10 +143,56 @@ describe('NotificationsService', () => {
       { ...ROW, type: NotificationType.REPLY },
     ]);
 
-    const page = await service.list('bob', 20, 0);
+    const page = await service.list('bob', 20);
 
     expect(page.items[0].postSnippet).toBeNull();
     expect(page.items[0].commentSnippet).not.toBeNull();
+  });
+
+  it('pages with a cursor so live arrivals never shift the next page', async () => {
+    const createdAt = new Date('2026-10-16T09:00:00Z');
+    prisma.notification.findMany.mockResolvedValue([ROW, { ...ROW, id: 'n2' }]);
+
+    const page = await service.list('bob', 1, { createdAt, id: 'n9' });
+
+    expect(prisma.notification.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          recipientId: 'bob',
+          OR: [
+            { createdAt: { lt: createdAt } },
+            { createdAt, id: { lt: 'n9' } },
+          ],
+        },
+        take: 2,
+      }),
+    );
+    expect(page.hasMore).toBe(true);
+    expect(page.nextCursor).toBe(`${ROW.createdAt.toISOString()}_n1`);
+  });
+
+  it('parses cursors and rejects malformed ones', () => {
+    expect(parseCursor(undefined)).toBeUndefined();
+    expect(parseCursor('2026-10-16T10:00:00.000Z_n1')).toEqual({
+      createdAt: new Date('2026-10-16T10:00:00.000Z'),
+      id: 'n1',
+    });
+    expect(() => parseCursor('garbage')).toThrow(BadRequestException);
+  });
+
+  it('marks read only up to the newest notification the user has seen', async () => {
+    const upTo = new Date('2026-10-16T10:00:00Z');
+    await service.markAllRead('bob', upTo);
+
+    expect(prisma.notification.updateMany).toHaveBeenCalledWith({
+      where: { recipientId: 'bob', readAt: null, createdAt: { lte: upTo } },
+      data: { readAt: expect.any(Date) as Date },
+    });
+  });
+
+  it('refuses to retract without a post or a recipient', async () => {
+    await service.retract({ type: NotificationType.LIKE, actorId: 'ana' });
+    expect(prisma.notification.deleteMany).not.toHaveBeenCalled();
   });
 
   it('marks only the caller’s unread rows as read', async () => {
