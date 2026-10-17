@@ -40,6 +40,27 @@ describe('deleteUploadIfUnreferenced', () => {
     expect(deleteUploadedFile).not.toHaveBeenCalled();
   });
 
+  it('never fails the caller when cleanup itself fails', async () => {
+    (deleteUploadedFile as jest.Mock).mockRejectedValueOnce(
+      Object.assign(new Error('locked'), { code: 'EBUSY' }),
+    );
+    await expect(
+      deleteUploadIfUnreferenced(
+        makePrisma(0, 0) as unknown as PrismaService,
+        URL,
+      ),
+    ).resolves.toBeUndefined();
+
+    const failingPrisma = makePrisma(0, 0);
+    failingPrisma.post.count.mockRejectedValue(new Error('db down'));
+    await expect(
+      deleteUploadIfUnreferenced(
+        failingPrisma as unknown as PrismaService,
+        URL,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   it('does nothing without a URL', async () => {
     const prisma = makePrisma(0, 0);
     await deleteUploadIfUnreferenced(prisma as unknown as PrismaService, null);
